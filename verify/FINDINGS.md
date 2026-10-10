@@ -158,3 +158,24 @@ Full chain (fetch → linearise → star-core repair → cutout → NaN to 0 →
 - **Clean-up:** no cache files were left once the outputs were saved (REQ-23).
 - **siril-cli:** `-d` changes the working folder before the `-s` script is read, so the script path must be absolute.
 - **Not yet tested on real files:** a full-size HST mosaic (about 1.8 GB for M51's 18′ box), to check memory use during repair.
+
+## 14 — Large masked holes around bright stars (REQ-67), M37 Pan-STARRS
+
+The Pan-STARRS i and z stacks of M37 had black areas that star-core repair left alone. They are stack masks around very bright stars (rectangles and streaks of 2,056–18,123 px), over the 2,000 px limit of REQ-38.
+
+To tell star holes apart from blank areas, I measured the brightest tenth of the pixels within 3 px of each large hole, in σ above a sigma-clipped sky:
+
+| Hole | Size | Edge brightness | Kind |
+|---|---|---|---|
+| i, bright star | 18,123 px | 102σ | star |
+| i, star near the cluster core | 5,282 px | 505σ | star |
+| z, bright star | 6,117 px | 523σ | star |
+| i, streaks running away from the bright star | 3,571 px (12 px wide) | 6σ | not touching the star |
+| i and y, blocks in empty sky | 2,056 and 2,941 px | 6σ and 2σ | blank |
+| image borders (PS1, HST, JWST) | — | 1.5–6σ | blank |
+
+- **Rule:** a 25σ threshold with a 50,000 px limit fills exactly the three star holes.
+- **What stays black:** the streaks, by the "stars only" choice, and the empty-sky blocks.
+- **No side effects:** the rule fills nothing in the M51 test files (step 13).
+- **Fill quality:** the rim-inward fill gives natural-looking saturated cores. Where a mask runs out into the sky, the fill is a grey, faceted smear rather than black.
+- **Option tested and not adopted:** filling from another filter on the same grid (r → i) gave more realistic stars. But a linear fit to the rim, which is dominated by the star, left flat bright bars over the sky.

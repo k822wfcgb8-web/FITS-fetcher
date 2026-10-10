@@ -412,6 +412,8 @@ const SETTINGS_FIELDS = [
   ["Processing defaults", [
     { key: "star_repair", label: "Repair star cores", type: "check" },
     { key: "star_repair_max_area", label: "Largest hole to repair", unit: "pixels", step: 1 },
+    { key: "star_repair_max_area_bright", label: "Largest hole next to a bright star", unit: "pixels", step: 1,
+      hint: "Larger holes are filled only when their edge is bright starlight, e.g. Pan-STARRS masks around bright stars." },
     { key: "cutout", label: "Cut around the object", type: "check" },
     { key: "cutout_default_arcmin", label: "Cutout box when the object's size is unknown", unit: "′", step: "any" },
   ]],

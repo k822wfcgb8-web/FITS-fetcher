@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 from astropy.io import fits
+from astropy.stats import sigma_clipped_stats
 from astropy.wcs import WCS, FITSFixedWarning
 from scipy import ndimage
 
@@ -29,6 +30,12 @@ KEEP = ("TELESCOP", "INSTRUME", "DETECTOR", "FILTER", "FILTER1", "FILTER2", "PUP
         "TARGNAME", "PROPOSID", "PROGRAM", "OBSERVTN", "VISIT", "PHOTMODE", "PHOTFLAM", "PHOTFNU", "PHOTPLAM",
         "PHOTBW", "PHOTZPT", "PHOTMJSR", "PHOTUJA2", "PIXAR_SR", "PIXAR_A2", "MAGZP", "MAGZPUNC")
 
+# REQ-67: a hole next to a bright star is recognised by its edge. Measured on M37 (Pan-STARRS i, z): the brightest
+# tenth of the pixels within 3 px of star holes lay 102-523 sigma above the sky, blank blocks and borders 2-6 sigma.
+RIM_WIDTH_PX = 3
+BRIGHT_RIM_SIGMA = 25.0
+BRIGHT_RIM_PERCENTILE = 90
+
 _DTYPES = {8: ">u1", 16: ">i2", 32: ">i4", 64: ">i8", -32: ">f4", -64: ">f8"}
 
 
@@ -41,6 +48,7 @@ class Options:
     """Processing settings for one download (REQ-61); recorded in each output's header (REQ-54)."""
     star_repair: bool = True
     repair_max_area: int = 2000
+    repair_max_area_bright: int = 50_000  # REQ-67: holes next to bright stars
     cutout: bool = False
     box_arcmin: float = 10.0
     reproject: bool = False  # REQ-24: not built yet
@@ -51,6 +59,7 @@ class Options:
     def cards(self) -> list[tuple[str, object, str]]:
         return [("FFREPAIR", self.star_repair, "FITS-fetcher star-core repair applied"),
                 ("FFREPMAX", self.repair_max_area, "[px] largest hole repaired"),
+                ("FFREPMXB", self.repair_max_area_bright, "[px] largest hole next to a bright star"),
                 ("FFCUTOUT", self.cutout, "cut around the object"),
                 ("FFCUTSZ", round(self.box_arcmin, 3) if self.cutout else 0.0, "[arcmin] cutout box size"),
                 ("FFREPROJ", self.reproject, "reprojected onto a common grid")]
@@ -58,7 +67,7 @@ class Options:
     def matches(self, header: fits.Header) -> bool:
         """Was an existing output made with these settings? (REQ-54)"""
         for key, value, _ in self.cards():
-            if key == "FFREPMAX" and not self.star_repair:
+            if key in ("FFREPMAX", "FFREPMXB") and not self.star_repair:
                 continue
             have = header.get(key)
             if have is None:
@@ -114,32 +123,61 @@ def linearise(data: np.ndarray, header: fits.Header) -> str | None:
     return "Linearised from asinh encoding: BOFFSET + BSOFTEN * 2 * sinh(x / (2.5 / ln 10))."
 
 
-def repair_star_cores(data: np.ndarray, max_area: int) -> tuple[int, int]:
-    """REQ-37–40: fill enclosed holes (NaN or exactly 0) of at most `max_area` pixels, from the rim inward.
+@dataclass
+class Repaired:
+    regions: int = 0
+    pixels: int = 0
+    bright: int = 0  # of which large holes next to bright stars (REQ-67)
 
-    Holes are 8-connected regions of candidate pixels. A region touching the image edge, or larger than
-    `max_area`, is left alone (REQ-38). Because regions are 8-connected, every pixel bordering a region is
-    valid, so a region that doesn't touch the edge is fully surrounded. Returns (regions, pixels) filled.
+
+def repair_star_cores(data: np.ndarray, max_area: int, max_area_bright: int = 0) -> Repaired:
+    """REQ-37–40, REQ-67: fill enclosed holes (NaN or exactly 0) from the rim inward.
+
+    Holes are 8-connected regions of candidate pixels. A region touching the image edge is left alone (REQ-38).
+    Because regions are 8-connected, every pixel bordering a region is valid, so a region that doesn't touch the
+    edge is fully surrounded. Regions up to `max_area` are filled; larger ones up to `max_area_bright` only if
+    their edge is bright starlight (REQ-67).
     """
     bad = ~np.isfinite(data) | (data == 0)
+    done = Repaired()
     if not bad.any():
-        return 0, 0
+        return done
     labels, n = ndimage.label(bad, structure=np.ones((3, 3), dtype=bool))
-    del bad
     sizes = np.bincount(labels.ravel())
     ny, nx = data.shape
-    regions = pixels = 0
+    sky = None
     for i, sl in enumerate(ndimage.find_objects(labels), start=1):
-        if sl is None or sizes[i] > max_area:
+        if sl is None or sizes[i] > max(max_area, max_area_bright):
             continue
         ys, xs = sl
         if ys.start == 0 or xs.start == 0 or ys.stop == ny or xs.stop == nx:
             continue
+        large = sizes[i] > max_area
+        if large:
+            if sky is None:  # sky level and noise, measured once and only when needed
+                _, med, sigma = sigma_clipped_stats(data[~bad][::37], sigma=3, maxiters=5)
+                sky = (float(med), float(sigma))
+            if not _next_to_bright_star(data, labels, i, sl, bad, sky):
+                continue
         win = (slice(ys.start - 1, ys.stop + 1), slice(xs.start - 1, xs.stop + 1))
         _fill(data[win], labels[win] == i)
-        regions += 1
-        pixels += int(sizes[i])
-    return regions, pixels
+        done.regions += 1
+        done.pixels += int(sizes[i])
+        done.bright += large
+    return done
+
+
+def _next_to_bright_star(data, labels, i, sl, bad, sky: tuple[float, float]) -> bool:
+    """REQ-67: are the brightest pixels around hole `i` far above the sky?"""
+    ys, xs = sl
+    r = RIM_WIDTH_PX + 1
+    win = (slice(max(ys.start - r, 0), ys.stop + r), slice(max(xs.start - r, 0), xs.stop + r))
+    hole = labels[win] == i
+    rim = ndimage.binary_dilation(hole, np.ones((3, 3), dtype=bool), iterations=RIM_WIDTH_PX) & ~hole & ~bad[win]
+    if not rim.any():
+        return False
+    med, sigma = sky
+    return float(np.percentile(data[win][rim], BRIGHT_RIM_PERCENTILE)) >= med + BRIGHT_RIM_SIGMA * sigma
 
 
 def _fill(win: np.ndarray, hole: np.ndarray) -> None:
@@ -192,11 +230,12 @@ def process(f: Fetched, product: Product, target: Target, options: Options) -> R
         history.append(note)
 
     if options.star_repair:
-        regions, pixels = repair_star_cores(data, options.repair_max_area)
-        history.append(f"Star-core repair: {regions} regions, {pixels} pixels filled (limit {options.repair_max_area} px). "
+        rep = repair_star_cores(data, options.repair_max_area, options.repair_max_area_bright)
+        history.append(f"Star-core repair: {rep.regions} regions, {rep.pixels} pixels filled (limit {options.repair_max_area} px; "
+                       f"{rep.bright} larger holes next to bright stars, limit {options.repair_max_area_bright} px). "
                        "Filled cores are estimates, not measurements; don't use them for photometry.")
     else:
-        regions = pixels = 0
+        rep = Repaired()
 
     wcs = _wcs(f.header)
     box, clipped = f.box, f.box_clipped
@@ -218,12 +257,12 @@ def process(f: Fetched, product: Product, target: Target, options: Options) -> R
     if zeros:
         history.append(f"{zeros} blank (NaN) pixels set to 0.")
 
-    header = build_header(f, product, target, wcs, options, history, (regions, pixels))
+    header = build_header(f, product, target, wcs, options, history, rep)
     return Result(data, header, notes)
 
 
 def build_header(f: Fetched, product: Product, target: Target, wcs: WCS, options: Options,
-                 history: list[str], repaired: tuple[int, int]) -> fits.Header:
+                 history: list[str], repaired: Repaired) -> fits.Header:
     h = fits.Header()
     h.extend(wcs.to_header(relax=True).cards)
     for key in KEEP:
@@ -249,8 +288,9 @@ def build_header(f: Fetched, product: Product, target: Target, wcs: WCS, options
     h["FFOBSID"] = (product.obs_id, "archive observation ID")
     for key, value, comment in options.cards():
         h[key] = (value, comment)
-    h["FFNREG"] = (repaired[0], "star-core regions filled")
-    h["FFNPIX"] = (repaired[1], "star-core pixels filled")
+    h["FFNREG"] = (repaired.regions, "star-core regions filled")
+    h["FFNPIX"] = (repaired.pixels, "star-core pixels filled")
+    h["FFNBRGT"] = (repaired.bright, "of which large holes next to bright stars")
     h.add_history(f"Downloaded {today} UTC by FITS-fetcher {__version__} from:")
     for part in textwrap.wrap(product.url, 70, break_on_hyphens=False):
         h.add_history(part)

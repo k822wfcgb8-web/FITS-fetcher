@@ -152,6 +152,7 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
         if missing or not req.items:
             raise HTTPException(400, "Some selected images are no longer known to the server. Search again.")
         options = Options(star_repair=req.star_repair, repair_max_area=settings.star_repair_max_area,
+                          repair_max_area_bright=settings.star_repair_max_area_bright,
                           cutout=req.cutout,
                           box_arcmin=footprint.box_arcmin(target.size_arcmin, settings.cutout_default_arcmin))
         job = manager.start(target, [Item(known[i.key], i.sets) for i in req.items], options)

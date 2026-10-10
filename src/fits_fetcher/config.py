@@ -32,6 +32,7 @@ class Settings:
     pixel_scale_warn_ratio: float = 4.0      # REQ-26
     star_repair: bool = True                 # REQ-42
     star_repair_max_area: int = 2000         # REQ-38
+    star_repair_max_area_bright: int = 50_000  # REQ-67: holes next to bright stars
     reproject: bool = False                  # REQ-24
     cutout: bool = False                     # REQ-25
     cutout_default_arcmin: float = 10.0      # REQ-25/REQ-58 box when the object's size is unknown
@@ -69,6 +70,7 @@ NUMBERS: dict[str, tuple[type, float, float, str]] = {
     "min_filters": (int, 2, 20, "filters"),
     "pixel_scale_warn_ratio": (float, 1, 1000, "×"),
     "star_repair_max_area": (int, 1, 1_000_000, "pixels"),
+    "star_repair_max_area_bright": (int, 1, 10_000_000, "pixels"),
     "cutout_default_arcmin": (float, 0.1, 600, "arcmin"),
 }
 SWITCHES = ("mix_instruments", "hst_show_mosaics", "star_repair", "cutout")

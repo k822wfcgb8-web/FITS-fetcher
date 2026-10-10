@@ -57,7 +57,8 @@ def test_enclosed_holes_filled_from_rim_symmetrically():
     data[9, 9] = 0.0                     # zero counts as a hole too
     data[8:11, 7] = 2.0                  # dimmer left rim
     data[8:11, 11] = 2.0                 # dimmer right rim, same as the left
-    assert repair_star_cores(data, 100) == (1, 9)
+    r = repair_star_cores(data, 100)
+    assert (r.regions, r.pixels, r.bright) == (1, 9, 0)
     assert np.isfinite(data).all() and (data != 0).all()
     assert data[9, 8] == pytest.approx(data[9, 10])  # left and right fill the same: no raster bias
 
@@ -67,8 +68,36 @@ def test_edge_touching_and_large_regions_are_left_alone():
     data[0:3, 10:13] = np.nan        # touches the edge (off-detector border)
     data[10:22, 10:22] = 0.0         # 144 px, over the limit (chip gap / blank area)
     data[25, 25] = np.nan            # small enclosed hole
-    assert repair_star_cores(data, 100) == (1, 1)
+    r = repair_star_cores(data, 100)
+    assert (r.regions, r.pixels) == (1, 1)
     assert np.isnan(data[0:3, 10:13]).all() and (data[10:22, 10:22] == 0).all() and data[25, 25] == 1.0
+
+
+def _sky_with_hole(rim_value: float, size: int = 40):
+    """Noisy sky (sigma 1) with a size x size blank hole whose 3-px surroundings are set to `rim_value`."""
+    data = np.random.default_rng(3).normal(10, 1, (200, 200)).astype(np.float32)
+    data[77:77 + size + 6, 77:77 + size + 6] = rim_value
+    data[80:80 + size, 80:80 + size] = 0.0
+    return data
+
+
+def test_large_hole_next_to_bright_star_is_filled():
+    """REQ-67: a 1,600 px hole over the 100 px limit, edged by starlight 100 sigma above the sky."""
+    data = _sky_with_hole(rim_value=110.0)
+    r = repair_star_cores(data, 100, 5000)
+    assert (r.regions, r.pixels, r.bright) == (1, 1600, 1)
+    assert data[100, 100] == pytest.approx(110.0)
+
+
+def test_large_hole_in_empty_sky_stays_blank():
+    data = _sky_with_hole(rim_value=12.0)  # 2 sigma: an ordinary blank block
+    r = repair_star_cores(data, 100, 5000)
+    assert r.regions == 0 and (data[80:120, 80:120] == 0).all()
+
+
+def test_bright_hole_over_second_limit_stays_blank():
+    data = _sky_with_hole(rim_value=110.0)
+    assert repair_star_cores(data, 100, 1000).regions == 0
 
 
 def test_nan_to_zero_counts():
@@ -117,7 +146,8 @@ def test_header_content(tmp_path):
     h = r.header
     assert h["OBJECT"] == "M 51" and h["FILTER"] == "F814W" and h["TELESCOP"] == "HST"
     assert h["PROPOSID"] == 10452 and h["BUNIT"] == "ELECTRONS/S"
-    assert h["FFREPAIR"] is True and h["FFNREG"] == 1 and h["FFNPIX"] == 4
+    assert h["FFREPAIR"] is True and h["FFNREG"] == 1 and h["FFNPIX"] == 4 and h["FFNBRGT"] == 0
+    assert h["FFREPMXB"] == 50_000
     hist = "".join(str(c) for c in h["HISTORY"])
     assert "https://example/x.fits" in hist and "Star-core repair: 1 regions" in hist and "Rows 1-50" in hist
     assert "BSCALE" not in h and "BOFFSET" not in h
@@ -157,6 +187,7 @@ def test_existing_output_skipped_only_with_same_settings(tmp_path):
                  Options(star_repair=True, repair_max_area=2000)), out)
     assert existing_matches(out, Options(star_repair=True, repair_max_area=2000))
     assert not existing_matches(out, Options(star_repair=True, repair_max_area=500))
+    assert not existing_matches(out, Options(star_repair=True, repair_max_area=2000, repair_max_area_bright=9000))
     assert not existing_matches(out, Options(star_repair=False))
     assert not existing_matches(out, Options(cutout=True, box_arcmin=10))
     assert not existing_matches(tmp_path / "missing.fits", Options())

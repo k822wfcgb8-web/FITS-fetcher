@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.8 (approved)
+**Version:** 1.9 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -188,7 +188,8 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 |---|---|
 | REQ-51 | *(Resolved Q-27)* Star-core repair applies to files from **all archives**, not only MAST. |
 | REQ-37 | *(Confirmed by Q-28, Q-29; revised by Q-35 after verification)* **Hole detection.** A pixel is a candidate for repair if it is **NaN or exactly 0**. Data-quality flags are not used: verification showed that HST and JWST combined products carry no DQ array, and Pan-STARRS keeps its mask in a separate file while its blanked cores already decode to NaN (verify/FINDINGS.md, steps 05–07). |
-| REQ-38 ✅ | **Only enclosed holes are filled.** Candidate pixels are grouped into connected regions. A region is repaired only if (a) it does **not touch the image edge**, (b) it is **fully surrounded by valid pixels**, and (c) its area is **at most a set limit** (default 2,000 pixels, adjustable; default to be tuned on the S-35 test objects). This prevents filling off-detector borders, chip gaps and other large blank areas, which stay blank and are handled by REQ-22. |
+| REQ-38 ✅ | **Only enclosed holes are filled.** Candidate pixels are grouped into connected regions. A region is repaired only if (a) it does **not touch the image edge**, (b) it is **fully surrounded by valid pixels**, and (c) its area is **at most a set limit** (default 2,000 pixels, adjustable; default to be tuned on the S-35 test objects; larger holes next to bright stars: see REQ-67). This prevents filling off-detector borders, chip gaps and other large blank areas, which stay blank and are handled by REQ-22. |
+| REQ-67 | *(Resolved Q-47, after testing M37 Pan-STARRS i and z)* **Large holes next to bright stars.** Pan-STARRS masks large areas around very bright stars (rectangles up to about 18,000 px in M37), which REQ-38's size limit leaves black. An enclosed hole larger than the REQ-38 limit is still filled if (a) it is **at most a second limit** (default **50,000 px**, adjustable in settings and recorded in the header) and (b) its **edge is bright starlight**: the brightest tenth of the pixels within 3 px of the hole lie at least **25σ above the sky** (sky and σ from a sigma-clipped sample of the image). In M37 this separated star holes (102–523σ) from blank blocks in empty sky and image borders (2–6σ). Holes that don't touch a star, such as thin streaks running away from it, stay black (*stars only* chosen at review); they can be fixed in PixInsight (e.g. PixelClip or CloneStamp). |
 | REQ-39 ✅ | **Fill method.** Holes are filled from the rim inward, one layer at a time: in each pass, every hole pixel touching at least one valid pixel (8-neighbour) is set to the mean of its valid neighbours, using values from the previous pass. This keeps PixelClip's "mean of nearest valid neighbours" approach but fills symmetrically, instead of in raster order (which in the original weights the fill toward the upper-left rim). |
 | REQ-40 ✅ | **No threshold in pixel units.** Unlike PixelClip, the app does not use a brightness threshold. PixelClip's 0.0001 threshold applies to PixInsight's 0–1 rescaled image. In the archive's physical units, background-subtracted sky is near or below 0, so a threshold would alter the whole background. |
 | REQ-41 ✅ | **Processing order.** Linearisation (REQ-36) → star-core repair → reprojection / cutout (REQ-24, REQ-25) → NaN-to-0 replacement (REQ-22). Repair must come before reprojection, so empty cores aren't interpolated into their surroundings. |
@@ -287,6 +288,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-44~~ | Settings panel placement and contents: **resolved → dialog from the header; folders, download limits, search and processing defaults (REQ-64)** | — |
 | ~~Q-45~~ | Choosing folders: **resolved → path box plus Choose… system dialog (REQ-65)** | — |
 | ~~Q-46~~ | Saving settings: **resolved → Save / Cancel / Reset to defaults (REQ-66)** | — |
+| ~~Q-47~~ | Large masked holes around bright stars: **resolved → second, larger limit (50,000 px) for holes whose edge is bright starlight; streaks not touching the star stay black (REQ-67)** | — |
 
 ---
 
@@ -313,3 +315,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.6 | 2026-10-10 | Added and resolved Q-40: matched-grid marking (REQ-60), after verification step 12. |
 | 1.7 | 2026-10-10 | Added and resolved Q-41–Q-43: download options in the download bar (REQ-61), per-row progress (REQ-62), end-of-batch summary with Open folder (REQ-63). Build order: download and processing first with MAST only; reprojection (REQ-24/29) in a later build. |
 | 1.8 | 2026-10-10 | Added and resolved Q-44–Q-46: settings dialog (REQ-64), folder choice (REQ-65), saving behaviour (REQ-66). |
+| 1.9 | 2026-10-10 | Added and resolved Q-47: larger repair limit for holes next to bright stars (REQ-67), after M37 Pan-STARRS i/z showed black masked areas. |
