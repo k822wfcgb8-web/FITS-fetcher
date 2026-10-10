@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.7 (approved)
+**Version:** 1.8 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -56,6 +56,9 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | S-06 ✅ | The user selects which results to download: individual filters, or a whole colour set at once. |
 | S-07 ✅ | A progress display for searches and downloads, with a Cancel button. |
 | S-08 ✅ | A settings panel for output folder, cache location, and download limits. |
+| REQ-64 | *(Resolved Q-44)* The settings panel is a **dialog** opened from a **Settings** button in the page header, so the current search and results stay as they are. It holds: output and cache folders; download limits (size warning, parallel downloads per archive, archive timeout); **search defaults** (minimum filters, instrument mixing, "Also show HST mosaics", pixel-scale warning ratio); and **processing defaults** (star-core repair and its size limit, cutout and the box size used when an object's size is unknown). Collection lists stay in the settings file only. |
+| REQ-65 | *(Resolved Q-45)* Each folder has a **path box and a Choose… button** that opens the system folder dialog. A typed path is accepted if the folder exists or can be created and is writable. |
+| REQ-66 | *(Resolved Q-46)* Changes take effect on **Save**; **Cancel** discards them; **Reset to defaults** fills in the built-in values (still applied only on Save). After saving, any changed search or processing default is applied to the search panel and download bar. A download already running keeps the settings it started with. |
 | REQ-27 | *(Resolved Q-05)* Results show a **preview thumbnail** for each image. If the archive supplies one, it is used. If not, the app tries to **create one**, without downloading the full science file: from a small cutout or low-resolution image service where one exists (e.g., an archive cutout service or the CDS hips2fits service; *availability per dataset to verify*). If neither is possible, a placeholder is shown, and a thumbnail is made from the science image once it has been downloaded. Thumbnails are display-only and never saved as science data. |
 | REQ-09 | *(Resolved Q-04)* The interface is a **local web page**: the Python program starts a small server on the user's own computer (bound to `localhost` only, not reachable from the network) and opens the search panel in the default web browser. |
 | S-36 ✅ | The server picks a free port automatically and shuts down cleanly when the user quits from the page or closes the terminal. |
@@ -281,6 +284,9 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-41~~ | Where download options are chosen: **resolved → tick boxes in the download bar, pre-set from settings (REQ-61)** | — |
 | ~~Q-42~~ | Download progress display: **resolved → status in each result row, overall bar and Cancel in the download bar (REQ-62)** | — |
 | ~~Q-43~~ | End of a download batch: **resolved → summary with an Open folder button (REQ-63)** | — |
+| ~~Q-44~~ | Settings panel placement and contents: **resolved → dialog from the header; folders, download limits, search and processing defaults (REQ-64)** | — |
+| ~~Q-45~~ | Choosing folders: **resolved → path box plus Choose… system dialog (REQ-65)** | — |
+| ~~Q-46~~ | Saving settings: **resolved → Save / Cancel / Reset to defaults (REQ-66)** | — |
 
 ---
 
@@ -306,3 +312,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.5 | 2026-10-10 | Added and resolved Q-39: image centre and object offset in the details view (REQ-59). |
 | 1.6 | 2026-10-10 | Added and resolved Q-40: matched-grid marking (REQ-60), after verification step 12. |
 | 1.7 | 2026-10-10 | Added and resolved Q-41–Q-43: download options in the download bar (REQ-61), per-row progress (REQ-62), end-of-batch summary with Open folder (REQ-63). Build order: download and processing first with MAST only; reprojection (REQ-24/29) in a later build. |
+| 1.8 | 2026-10-10 | Added and resolved Q-44–Q-46: settings dialog (REQ-64), folder choice (REQ-65), saving behaviour (REQ-66). |

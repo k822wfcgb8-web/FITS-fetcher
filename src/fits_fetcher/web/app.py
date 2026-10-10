@@ -6,6 +6,9 @@ page's event stream (Cancel) stops the stream; results still arriving from archi
 
 Downloads (REQ-61–63) are started with the keys of products a search returned; the page never sends URLs,
 so the server only fetches files it found itself. Progress streams as server-sent events.
+
+Settings (REQ-64–66) are read and saved through /api/settings; the shared Settings object is updated in place,
+so new searches and downloads use the saved values while running downloads keep their own copy.
 """
 from __future__ import annotations
 
@@ -15,15 +18,16 @@ import logging
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from fits_fetcher import __version__, filters, footprint
 from fits_fetcher.archives import ARCHIVES, PLANNED, ArchiveError, Product, Target
-from fits_fetcher.config import Settings
+from fits_fetcher.config import EDITABLE, Settings, validated
 from fits_fetcher.downloads import DownloadManager, Item, open_folder
+from fits_fetcher.folders import NoFolderDialog, choose_folder
 from fits_fetcher.grouping import build_sets
 from fits_fetcher.output import thumbnail_png
 from fits_fetcher.processing import Options
@@ -56,8 +60,13 @@ class DownloadRequest(BaseModel):
     cutout: bool
 
 
-def create_app(settings: Settings | None = None, on_quit=None) -> FastAPI:
-    settings = settings or Settings.load()
+class FolderRequest(BaseModel):
+    prompt: str = "Choose a folder"
+    initial: str = ""
+
+
+def create_app(settings: Settings | None = None, on_quit=None, settings_path: Path | None = None) -> FastAPI:
+    settings = settings or Settings.load(settings_path)
     app = FastAPI(title="FITS-fetcher", version=__version__)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     known: dict[str, Product] = {}  # every product a search has returned, by key
@@ -195,6 +204,31 @@ def create_app(settings: Settings | None = None, on_quit=None) -> FastAPI:
         except (OSError, ValueError) as e:
             raise HTTPException(500, f"Couldn't make a thumbnail: {e}") from e
         return Response(png, media_type="image/png")
+
+    @app.get("/api/settings")
+    def get_settings():
+        return {"settings": asdict(settings), "defaults": asdict(Settings()), "editable": list(EDITABLE)}
+
+    @app.put("/api/settings")
+    def put_settings(changes: dict = Body(...)):
+        new, errors = validated(settings, {k: v for k, v in changes.items() if k in EDITABLE})
+        if errors:
+            raise HTTPException(422, {"message": "Some settings need fixing.", "errors": errors})
+        try:
+            new.save(settings_path)
+        except OSError as e:
+            raise HTTPException(500, {"message": f"Couldn't save the settings file: {e}", "errors": {}}) from e
+        for key in EDITABLE:  # in place: the download manager and search share this object
+            setattr(settings, key, getattr(new, key))
+        log.info("Settings saved")
+        return {"settings": asdict(settings)}
+
+    @app.post("/api/choose-folder")
+    def choose(req: FolderRequest):
+        try:
+            return {"path": choose_folder(req.prompt, req.initial or str(Path.home()))}
+        except NoFolderDialog as e:
+            raise HTTPException(501, str(e)) from e
 
     @app.post("/api/quit")
     def quit_app():

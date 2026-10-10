@@ -19,7 +19,7 @@ import time
 import uuid
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from fits_fetcher.archives.base import Archive, ArchiveError, Product, Target
@@ -171,7 +171,8 @@ class DownloadManager:
         self.jobs: dict[str, DownloadJob] = {}
 
     def start(self, target: Target, items: list[Item], options: Options) -> DownloadJob:
-        job = DownloadJob(target, items, options, self.settings, self.archives)
+        # A copy: settings saved while this job runs don't change where it saves (REQ-66).
+        job = DownloadJob(target, items, options, replace(self.settings), self.archives)
         self.jobs[job.id] = job
         for old in list(self.jobs)[:-KEEP_JOBS]:
             if self.jobs[old].finished:

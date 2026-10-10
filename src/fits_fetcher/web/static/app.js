@@ -58,6 +58,7 @@ async function init() {
   $("hst-mosaics").checked = info.settings.hst_show_mosaics;
   $("opt-repair").checked = info.settings.star_repair;   // REQ-61: pre-set from the saved settings
   $("opt-cutout").checked = info.settings.cutout;
+  buildSettingsForm();
   for (const name of [...info.archives, ...info.planned]) {
     const available = info.archives.includes(name);
     $("archive-boxes").append(el("label", { class: "check" + (available ? "" : " unavailable") },
@@ -389,6 +390,132 @@ function showDownloadSummary(text, canOpen) {
   $("download-summary-text").textContent = text;
   $("open-folder").hidden = !canOpen;
   $("download-summary").hidden = false;
+}
+
+// ---------- settings dialog (S-08, REQ-64–66) ----------
+const SETTINGS_FIELDS = [
+  ["Folders", [
+    { key: "output_dir", label: "Output folder", type: "folder", hint: "Downloaded images are saved here, one folder per object." },
+    { key: "cache_dir", label: "Cache folder", type: "folder", hint: "Partial downloads wait here so they can resume; files are removed once saved." },
+  ]],
+  ["Downloads", [
+    { key: "size_warning_gb", label: "Warn when a download is over", unit: "GB", step: "any" },
+    { key: "parallel_downloads", label: "Downloads at once, per archive", unit: "", step: 1 },
+    { key: "archive_timeout_s", label: "Archive search timeout", unit: "s", step: 1 },
+  ]],
+  ["Search defaults", [
+    { key: "min_filters", label: "Minimum filters", unit: "", step: 1 },
+    { key: "mix_instruments", label: "Allow mixing instruments and archives", type: "check" },
+    { key: "hst_show_mosaics", label: "Also show HST mosaics (cut around the object)", type: "check" },
+    { key: "pixel_scale_warn_ratio", label: "Warn when pixel scales in a mixed set differ by more than", unit: "×", step: "any" },
+  ]],
+  ["Processing defaults", [
+    { key: "star_repair", label: "Repair star cores", type: "check" },
+    { key: "star_repair_max_area", label: "Largest hole to repair", unit: "pixels", step: 1 },
+    { key: "cutout", label: "Cut around the object", type: "check" },
+    { key: "cutout_default_arcmin", label: "Cutout box when the object's size is unknown", unit: "′", step: "any" },
+  ]],
+];
+const settingsState = { defaults: null };
+
+function buildSettingsForm() {
+  $("settings-fields").replaceChildren(...SETTINGS_FIELDS.map(([legend, fields]) =>
+    el("fieldset", {}, el("legend", {}, legend), ...fields.map(settingsField))));
+}
+
+function settingsField(f) {
+  const id = `s-${f.key}`;
+  const err = el("p", { class: "field-error error", hidden: true });
+  if (f.type === "check") {
+    return el("div", { class: "field", "data-field": f.key },
+      el("label", { class: "check" }, el("input", { id, type: "checkbox", name: f.key }), f.label), err);
+  }
+  const input = f.type === "folder"
+    ? el("input", { id, type: "text", name: f.key, class: "grow", autocomplete: "off", spellcheck: "false" })
+    : el("input", { id, type: "number", name: f.key, step: f.step });
+  const choose = f.type === "folder"
+    ? el("button", { type: "button", class: "secondary", onclick: () => chooseFolder(f, input, err) }, "Choose…") : null;
+  return el("div", { class: "field", "data-field": f.key },
+    el("label", { for: id }, f.label),
+    el("div", { class: "row" }, input, f.unit ? el("span", { class: "muted" }, f.unit) : null, choose),
+    f.hint ? el("p", { class: "hint" }, f.hint) : null, err);
+}
+
+function fillSettings(values) {
+  for (const [, fields] of SETTINGS_FIELDS) for (const f of fields) {
+    const input = $(`s-${f.key}`);
+    if (f.type === "check") input.checked = !!values[f.key]; else input.value = values[f.key];
+  }
+}
+
+function showSettingsErrors(message, errors = {}) {
+  $("settings-error").textContent = message || "";
+  $("settings-error").hidden = !message;
+  for (const node of document.querySelectorAll("#settings-fields .field")) {
+    const msg = errors[node.dataset.field];
+    const err = node.querySelector(".field-error");
+    err.textContent = msg || ""; err.hidden = !msg;
+    node.querySelector("input").classList.toggle("invalid", !!msg);
+  }
+}
+
+async function chooseFolder(f, input, err) {
+  const btn = input.parentElement.querySelector("button");
+  btn.disabled = true; btn.textContent = "Choosing…";
+  try {
+    const r = await fetch("/api/choose-folder", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: `Choose the ${f.label.toLowerCase()}`, initial: input.value }) });
+    const body = await r.json();
+    if (!r.ok) { err.textContent = body.detail; err.hidden = false; return; }
+    if (body.path) { input.value = body.path; err.hidden = true; input.classList.remove("invalid"); }
+  } finally {
+    btn.disabled = false; btn.textContent = "Choose…";
+  }
+}
+
+$("open-settings").addEventListener("click", async () => {
+  const body = await (await fetch("/api/settings")).json();
+  settingsState.defaults = body.defaults;
+  fillSettings(body.settings);
+  showSettingsErrors();
+  $("settings-dialog").showModal();
+});
+
+$("settings-cancel").addEventListener("click", () => $("settings-dialog").close());
+$("settings-reset").addEventListener("click", () => { fillSettings(settingsState.defaults); showSettingsErrors(); });
+
+$("settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const changes = {};
+  for (const [, fields] of SETTINGS_FIELDS) for (const f of fields) {
+    const input = $(`s-${f.key}`);
+    changes[f.key] = f.type === "check" ? input.checked : input.value;
+  }
+  $("settings-save").disabled = true;
+  try {
+    const r = await fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) });
+    const body = await r.json();
+    if (!r.ok) { showSettingsErrors(body.detail.message || "The settings couldn't be saved.", body.detail.errors); return; }
+    applySavedSettings(state.info.settings, body.settings);
+    $("settings-dialog").close();
+  } catch (err) {
+    showSettingsErrors("The settings couldn't be saved: the connection to FITS-fetcher was lost.");
+  } finally {
+    $("settings-save").disabled = false;
+  }
+});
+
+// REQ-66: a changed default is applied to the page; anything left unchanged keeps what you set for this search.
+function applySavedSettings(old, now) {
+  state.info.settings = now;
+  const changed = (k) => old[k] !== now[k];
+  if (changed("min_filters")) $("min-filters").value = now.min_filters;
+  if (changed("mix_instruments")) $("mix").checked = now.mix_instruments;
+  if (changed("hst_show_mosaics")) $("hst-mosaics").checked = now.hst_show_mosaics;
+  if (changed("star_repair")) $("opt-repair").checked = now.star_repair;
+  if (changed("cutout")) $("opt-cutout").checked = now.cutout;
+  if (state.target) $("opt-cutout-label").textContent = `Cut around the object (${cutoutBox(state.target).toFixed(1)}′ box)`;
+  updateSelection();
 }
 
 // ---------- quit (S-36) ----------

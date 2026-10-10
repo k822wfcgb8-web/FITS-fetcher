@@ -10,8 +10,23 @@
   <header>
     <h1>FITS-fetcher</h1>
     <span id="version" class="muted"></span>
+    <button id="open-settings" class="secondary">Settings</button>
     <button id="quit" class="secondary" title="Stop the FITS-fetcher server">Quit</button>
   </header>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <form id="settings-form" novalidate>
+      <h2 id="settings-title">Settings</h2>
+      <p id="settings-error" class="error" hidden></p>
+      <div id="settings-fields"></div>
+      <div class="row dialog-buttons">
+        <button type="button" id="settings-reset" class="secondary">Reset to defaults</button>
+        <span class="grow"></span>
+        <button type="button" id="settings-cancel" class="secondary">Cancel</button>
+        <button type="submit" id="settings-save">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <main>
     <section class="panel" id="search-panel">

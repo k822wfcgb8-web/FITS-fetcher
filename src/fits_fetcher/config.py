@@ -58,3 +58,62 @@ class Settings:
         path = path or config_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(asdict(self), indent=2))
+
+
+# Settings the settings dialog can change (REQ-64), with their allowed ranges. Collection lists stay file-only.
+FOLDERS = ("output_dir", "cache_dir")
+NUMBERS: dict[str, tuple[type, float, float, str]] = {
+    "size_warning_gb": (float, 0.1, 10_000, "GB"),
+    "parallel_downloads": (int, 1, 10, "downloads"),
+    "archive_timeout_s": (int, 10, 600, "seconds"),
+    "min_filters": (int, 2, 20, "filters"),
+    "pixel_scale_warn_ratio": (float, 1, 1000, "×"),
+    "star_repair_max_area": (int, 1, 1_000_000, "pixels"),
+    "cutout_default_arcmin": (float, 0.1, 600, "arcmin"),
+}
+SWITCHES = ("mix_instruments", "hst_show_mosaics", "star_repair", "cutout")
+EDITABLE = FOLDERS + tuple(NUMBERS) + SWITCHES
+
+
+def check_folder(path: str) -> tuple[str, str | None]:
+    """REQ-65: (expanded path, error). The folder must exist or be creatable, and be writable."""
+    if not path.strip():
+        return path, "Enter a folder."
+    p = Path(path.strip()).expanduser()
+    if not p.is_absolute():
+        return str(p), "Use a full path, e.g. starting with / or ~."
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        probe = p / ".fits-fetcher-write-test"
+        probe.write_text("")
+        probe.unlink()
+    except OSError as e:
+        return str(p), f"Can't use this folder: {e.strerror or e}."
+    return str(p), None
+
+
+def validated(current: Settings, changes: dict) -> tuple[Settings, dict[str, str]]:
+    """Apply editable `changes` to a copy of `current`; returns (new settings, errors by field)."""
+    values, errors = asdict(current), {}
+    for key in FOLDERS:
+        if key in changes:
+            values[key], err = check_folder(str(changes[key]))
+            if err:
+                errors[key] = err
+    for key, (kind, lo, hi, unit) in NUMBERS.items():
+        if key not in changes:
+            continue
+        try:
+            v = kind(changes[key])
+            if kind is int and float(changes[key]) != v:
+                raise ValueError
+        except (TypeError, ValueError):
+            errors[key] = "Enter a whole number." if kind is int else "Enter a number."
+            continue
+        if not lo <= v <= hi:
+            errors[key] = f"Must be between {lo:g} and {hi:g} {unit}."
+        values[key] = v
+    for key in SWITCHES:
+        if key in changes:
+            values[key] = bool(changes[key])
+    return Settings(**values), errors
