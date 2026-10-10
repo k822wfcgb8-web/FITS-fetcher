@@ -114,3 +114,18 @@ Read with HTTP range requests (headers only); **MAST supports partial reads**.
 | `compressed.fits`: Rice tile-compressed | Loads, but values differ slightly (max 382,220.9 vs 382,213.7), because Rice compression of floats is **lossy** |
 
 This supports REQ-46 (no compression) and REQ-47 (no scaling) as written. The `stat` output doesn't show whether Siril read the WCS; check that separately (e.g. with a plate-solve-free Siril command) when tests are written.
+
+## 11 — Found while building the MAST module (2026-10-10)
+
+- **HST product families (→ REQ-58).** For M51 F814W the `HST` collection holds 1 multi-visit mosaic (`hst_skycell-…_all`), 37 HAP single-visit images (`hst_<prop>_<visit>_…`) and 34 classic-pipeline copies (`jd8f…`) of the same exposures. All multi-visit mosaics of one skycell share **one pixel grid** (21,258 × 20,668 px at 0.04″ for M51's skycell, identical `CRVAL`/`CRPIX` for ACS/WFC, WFC3/UVIS and WFC3/IR `_all`).
+- **WFC3/IR mosaics come twice:** `_all` on the shared 0.04″ grid and `_coarse-all` at 0.12″. Only `_all` aligns with the other filters.
+- **`_total_` HAP products** are white-light sums of several filters; excluded.
+- **Filter names:** HAP joins parts with `-` (`F606W-POL0V`), the classic pipeline with `;`. Polarizer (`POL…`) and ramp (`FR…`) images are not colour channels; excluded.
+- **Speed:** `Observations.get_product_list` took 56 of 60 s for M51 (26,862 file entries for 168 observations), because each HAP observation lists every exposure inside it. File addresses follow fixed patterns, checked with HTTP HEAD on 2026-10-10:
+  - HST ACS/WFC and WFC3/UVIS: `mast:HST/product/<obs_id>_drc.fits`
+  - other HST (ACS/HRC, WFC3/IR, WFPC2): `mast:HST/product/<obs_id>_drz.fits`
+  - JWST: `mast:JWST/product/<obs_id>_i2d.fits`
+  - PS1: `https://ps1images.stsci.edu/rings.v3.skycell/<proj>/<sub>/<obs_id>.unconv.fits`
+
+  Building them directly cut the search to under a second. `tests/test_network.py` re-checks one file of each kind.
+- **JWST NIRCam `_i2d` files** can be large mosaics (2.4 GB for one F164N product), which makes REQ-57's science-only download important.

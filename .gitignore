@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 verify/downloads/
 .DS_Store
+*.egg-info/
+.pytest_cache/

@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.3 (approved)
+**Version:** 1.4 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -135,6 +135,10 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 ### 7.2 Avoiding duplicate data
 - **REQ-55:** *(Resolved Q-33)* Within MAST, Hubble data are taken **only from the `HST` collection** (standard pipeline products). The `HLA` and `HLSP` collections, which reprocess or re-combine the same observations, are not queried, so each Hubble observation appears once.
 - **REQ-56:** *(Resolved Q-34)* At IRSA, only **mission pipeline collections** are used (initially `spitzer_seip`, `wise_allwise`, `twomass_allsky`; list kept in configuration). Community re-reductions of the same data (e.g. SINGS, LVL, SIMLA, DustPedia, z0MGS, unWISE) are not queried. Herschel is not offered in version 1, because IRSA holds only community Herschel products and the Herschel pipeline archive (ESA) is out of scope. IRSA is queried through its **SIA image service**, because its ObsCore table omits Spitzer.
+- **REQ-58:** *(Resolved Q-38)* Within the `HST` collection (REQ-55), MAST holds the same exposures three times: classic pipeline products (`_drc`/`_drz` per visit), Hubble Advanced Products **single-visit** images (`hst_<prop>_<visit>_…`, aligned to Gaia) and HAP **multi-visit mosaics** (`hst_skycell-…_all`, every visit in one image on a fixed sky grid). The app offers:
+  - **Single-visit HAP images by default.**
+  - A search-panel switch, **"Also show HST mosaics"** (off by default), that adds the multi-visit mosaics. A mosaic is always delivered **cut around the object**: the same centred pixel box is cut from every filter, so the filters stay pixel-aligned without resampling (verification showed all mosaics of a skycell share one grid). Only the rows of the box are downloaded (REQ-57). The box is 2× the object's size (REQ-25), or a default size when the size is unknown. Objects larger than a skycell (about 14′) or lying across a skycell boundary are cut off at the mosaic edge; the app warns when this happens.
+  - **Classic pipeline products are never shown.**
 - **REQ-35:** The CADC module keeps an explicit **exclusion list** of mirrored collections (initially HST and JWST). The list lives in configuration, not code, so it can be updated if CADC adds new mirrors. During implementation, the CADC collection list must be checked against MAST, ESO and IRSA holdings to finalise it *(verify)*.
 
 ### 7.3 Result metadata to display (suggested)
@@ -265,6 +269,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-34~~ | IRSA duplicates: **resolved → mission pipeline collections only, no Herschel in v1 (REQ-56)** | — |
 | ~~Q-35~~ | Hole detection after verification: **resolved → NaN and zero only, no DQ flags (REQ-37 revised)** | — |
 | ~~Q-36~~ | Partial downloads: **resolved → science extension only where supported (REQ-57)** | — |
+| ~~Q-38~~ | HST product families: **resolved → HAP single-visit by default, switch to add mosaics cut around the object, no classic pipeline (REQ-58)** | — |
 | ~~Q-37~~ | Siril test (REQ-50): **resolved → Siril 1.4.4 installed, `siril-cli` scripting confirmed** | — |
 
 ---
@@ -287,3 +292,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.1a | 2026-10-10 | REQ-36–50 reviewed: all approved except REQ-44 modified (credit in documentation only). Specification approved. |
 | 1.2 | 2026-10-10 | Renamed to `REQUIREMENTS.md`. Added and resolved Q-30–Q-32: colour set definition (REQ-52), several products per filter (REQ-53), re-processing when settings change (REQ-54). Added and resolved Q-33: Hubble data from the `HST` collection only (REQ-55). Added and resolved Q-34: IRSA pipeline collections only (REQ-56). |
 | 1.3 | 2026-10-10 | After verification steps 01–09: REQ-37 revised (NaN/zero only, Q-35); REQ-57 added (science-extension-only downloads, Q-36); REQ-23 note added; Q-37 opened and resolved (Siril installed, `siril-cli` scriptable). REQ-36 formula confirmed. |
+| 1.4 | 2026-10-10 | Added and resolved Q-38: HST product families (REQ-58). |

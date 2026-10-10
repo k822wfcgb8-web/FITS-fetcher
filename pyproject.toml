@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fits-fetcher"
+version = "0.1.0"
+description = "Find and download calibrated, linear, multi-filter astronomical images from public archives, ready for PixInsight or Siril."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10"
+dependencies = [
+    "astropy>=6.0",
+    "astroquery>=0.4.7",
+    "pyvo>=1.5",
+    "numpy>=1.24",
+    "requests>=2.31",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "platformdirs>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+fits-fetcher = "fits_fetcher.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+fits_fetcher = ["web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: test needs internet access to the archives (run with -m network)"]
+addopts = "-m 'not network'"

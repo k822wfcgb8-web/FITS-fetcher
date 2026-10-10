@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FITS-fetcher</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>FITS-fetcher</h1>
+    <span id="version" class="muted"></span>
+    <button id="quit" class="secondary" title="Stop the FITS-fetcher server">Quit</button>
+  </header>
+
+  <main>
+    <section class="panel" id="search-panel">
+      <h2>Search</h2>
+      <form id="resolve-form" class="row">
+        <label class="grow">Object name, designation or RA/Dec
+          <input id="name" type="text" placeholder="e.g. M51, Whirlpool Galaxy, NGC 7293, 202.47 47.195" autocomplete="off" required>
+        </label>
+        <button type="submit">Find object</button>
+      </form>
+
+      <div id="candidates" hidden>
+        <p>Several objects match. Choose one:</p>
+        <ul id="candidate-list" class="choices"></ul>
+      </div>
+
+      <div id="target" class="target" hidden></div>
+      <p id="resolve-error" class="error" hidden></p>
+
+      <fieldset>
+        <legend>Archives</legend>
+        <div id="archive-boxes" class="row wrap"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Colour sets</legend>
+        <div class="row wrap">
+          <label>Minimum filters <input id="min-filters" type="number" min="2" value="3"></label>
+          <label class="check"><input id="mix" type="checkbox"> Allow mixing instruments and archives</label>
+          <label>Filter type
+            <select id="band-type">
+              <option value="either">Broadband or narrowband</option>
+              <option value="broad">Broadband only</option>
+              <option value="narrow">Narrowband only</option>
+            </select>
+          </label>
+        </div>
+        <div class="row wrap" id="line-boxes" aria-label="Emission lines"></div>
+        <label class="check"><input id="hst-mosaics" type="checkbox"> Also show HST mosaics (cut around the object)</label>
+      </fieldset>
+
+      <div class="row">
+        <button id="search" disabled>Search</button>
+        <button id="cancel" class="secondary" hidden>Cancel</button>
+      </div>
+      <ul id="archive-status" class="status"></ul>
+    </section>
+
+    <section class="panel" id="results-panel" hidden>
+      <h2>Results</h2>
+      <p id="results-summary" class="muted"></p>
+      <div id="results"></div>
+      <div class="row download-bar">
+        <span id="selection-summary" class="muted">Nothing selected.</span>
+        <button id="download" disabled title="Downloading is the next part to be built">Download selected (coming next)</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
