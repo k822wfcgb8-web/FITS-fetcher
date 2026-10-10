@@ -193,7 +193,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | REQ-47 ✅ | The science array is stored as **32-bit float** (`BITPIX = -32`) with **no `BSCALE`/`BZERO` scaling**, so the stored numbers are the actual pixel values. |
 | REQ-48 ✅ | Files use the `.fits` extension, which both programs recognise. |
 | REQ-49 ✅ | **Compatibility check before saving:** each output is checked automatically for a single image HDU, `BITPIX = -32`, no compression, no scaling keywords, and a valid celestial WCS. A file that fails is not saved, and the reason is logged. |
-| REQ-50 ✅ | **Testing:** where Siril is installed, the test suite loads each test output with Siril's command-line version (`siril-cli`) *(verify this can be scripted)*. PixInsight is checked manually, at least once per instrument, because I'm not aware of a simple way to script PixInsight from outside. |
+| REQ-50 ✅ | **Testing:** where Siril is installed, the test suite loads each test output with Siril's command-line version (`siril-cli`; on macOS `/Applications/Siril.app/Contents/MacOS/siril-cli`, scripting confirmed in verification step 10, exit code 0/1 marks success/failure). PixInsight is checked manually, at least once per instrument, because I'm not aware of a simple way to script PixInsight from outside. |
 
 ---
 
@@ -265,7 +265,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-34~~ | IRSA duplicates: **resolved → mission pipeline collections only, no Herschel in v1 (REQ-56)** | — |
 | ~~Q-35~~ | Hole detection after verification: **resolved → NaN and zero only, no DQ flags (REQ-37 revised)** | — |
 | ~~Q-36~~ | Partial downloads: **resolved → science extension only where supported (REQ-57)** | — |
-| Q-37 | Siril test (REQ-50): **user will install Siril**; scripting of `siril-cli` still to verify | No |
+| ~~Q-37~~ | Siril test (REQ-50): **resolved → Siril 1.4.4 installed, `siril-cli` scripting confirmed** | — |
 
 ---
 
@@ -286,4 +286,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.1 | 2026-10-10 | Added REQ-36 (linearise non-linear encodings), Section 8.3 star-core repair adapted from PixelClip.js (REQ-37–44), Section 8.4 file compatibility (REQ-45–50). Added and resolved Q-27–Q-29 (REQ-51). |
 | 1.1a | 2026-10-10 | REQ-36–50 reviewed: all approved except REQ-44 modified (credit in documentation only). Specification approved. |
 | 1.2 | 2026-10-10 | Renamed to `REQUIREMENTS.md`. Added and resolved Q-30–Q-32: colour set definition (REQ-52), several products per filter (REQ-53), re-processing when settings change (REQ-54). Added and resolved Q-33: Hubble data from the `HST` collection only (REQ-55). Added and resolved Q-34: IRSA pipeline collections only (REQ-56). |
-| 1.3 | 2026-10-10 | After verification steps 01–09: REQ-37 revised (NaN/zero only, Q-35); REQ-57 added (science-extension-only downloads, Q-36); REQ-23 note added; Q-37 opened (Siril). REQ-36 formula confirmed. |
+| 1.3 | 2026-10-10 | After verification steps 01–09: REQ-37 revised (NaN/zero only, Q-35); REQ-57 added (science-extension-only downloads, Q-36); REQ-23 note added; Q-37 opened and resolved (Siril installed, `siril-cli` scriptable). REQ-36 formula confirmed. |

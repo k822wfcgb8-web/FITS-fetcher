@@ -98,7 +98,19 @@ Read with HTTP range requests (headers only); **MAST supports partial reads**.
 - **PS1:** the cutout service (step 05) can also make thumbnails.
 
 ## Not yet verified
-- **siril-cli** (REQ-50): Siril is not installed on this Mac.
 - **CADC** collection list and mirrors (REQ-21/35): service unreachable (step 03).
 - **KiDS** coadds at ESO for optical coverage; ESO thumbnails.
 - **Licence compatibility** (REQ-34) of dependencies.
+
+## 10 — siril-cli scripting (REQ-50) (`10_siril_cli.py`)
+
+**Confirmed: Siril 1.4.4's `siril-cli` can be scripted.** On macOS it is at `/Applications/Siril.app/Contents/MacOS/siril-cli` (not on `PATH`). Run `siril-cli -d <dir> -s <script.ssf>`; a script of `requires 1.4.0` / `load <file>` / `stat` / `close` loads the file and prints statistics. **The exit code is 0 on success and 1 on failure**, so tests can rely on it.
+
+| Test file | Siril result |
+|---|---|
+| `good.fits`: single HDU, `BITPIX -32`, no scaling (the app's output format) | Loads; statistics match the source exactly |
+| `multi_hdu.fits`: empty primary + image extension | Loads (Siril takes the first image) |
+| `scaled.fits`: 16-bit with `BSCALE`/`BZERO` | **Fails**: "Numerical overflow during type conversion" |
+| `compressed.fits`: Rice tile-compressed | Loads, but values differ slightly (max 382,220.9 vs 382,213.7), because Rice compression of floats is **lossy** |
+
+This supports REQ-46 (no compression) and REQ-47 (no scaling) as written. The `stat` output doesn't show whether Siril read the WCS; check that separately (e.g. with a plate-solve-free Siril command) when tests are written.
