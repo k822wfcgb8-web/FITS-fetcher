@@ -179,3 +179,32 @@ To tell star holes apart from blank areas, I measured the brightest tenth of the
 - **No side effects:** the rule fills nothing in the M51 test files (step 13).
 - **Fill quality:** the rim-inward fill gives natural-looking saturated cores. Where a mask runs out into the sky, the fill is a grey, faceted smear rather than black.
 - **Option tested and not adopted:** filling from another filter on the same grid (r → i) gave more realistic stars. But a linear fit to the rim, which is dominated by the star, left flat bright bars over the sky.
+
+## 15 — Whole-object Pan-STARRS boxes, coverage and objects inside (REQ-68–70), M46
+
+**Why M46 showed only one set.** At M46's centre, MAST holds only the Pan-STARRS skycell 0994.022, plus TESS images, which are excluded. Within the 25′ cluster, the HST images are of NGC 2438 (6.6′ from the centre) and OH 231.8+04.2 (10.5′). They miss the cluster's centre, so REQ-14 leaves them out. The skycell that was shown covered only **51%** of the cluster; the four skycells overlapping M46 together cover 100%.
+
+**Skycells share one pixel lattice.** Skycells 0994.022, 023, 032 and 033 have the same CRVAL, CDELT and PC, CRPIX offsets of whole pixels (5,762 × 5,774), and overlap by about 480 px. They can be stitched with no resampling.
+
+**PS1 cutout service** (`fitscut.cgi`, checked 2026-10-10):
+- returns linear 32-bit floats on the skycell's grid, with CRPIX shifted by whole pixels;
+- `size=w,h` gives a rectangle; the cutout starts at `x − w//2`, `y − h//2`;
+- 196 MB took 12 s.
+
+Cutouts are uncompressed, so per skycell the app fetches either the cutout or the whole compressed file (68 MB), whichever is smaller.
+
+**Results:**
+
+| Object | Box | Skycells | Downloaded | Time |
+|---|---|---|---|---|
+| M46, r | 37.9′ (9108 px) | 6 | 262 MB | 17 s |
+| M51, r | 13.6′ (3256 px) | 4 | 56 MB | 6 s |
+
+Before, M51 came as one 68 MB skycell with the galaxy near a corner. Now each object is at the centre of its box, the image loads in siril-cli, and the 12 × 12 background blocks show no steps at skycell joins. The dip around M46's core is Pan-STARRS's own sky subtraction around the bright cluster.
+
+**MAST timing varies a lot today.** The same query took 3–35 s, and M42 at a 0.25° radius returned 5,222 rows in 35 s. So the PS1 query runs in parallel with the main query, and the objects-inside query (capped at 0.25°) runs after the results are shown.
+
+**Objects inside.** Archive target names were looked up in one SIMBAD `ident IN (…)` query (0.4 s).
+- M51: 18 archive names became 4 objects (SN 2005cs, M51 OT2019-1, SN 2011dh, NGC 5195). Its own pointings (`M51-POS4`, `NGC5194-1`) and labels (`ANY`) were dropped.
+- M46: `QXPUP` joined OH 231.8+04.2.
+- Searching NGC 2438 from the list found its WFPC2 narrowband set (68% coverage) and a Pan-STARRS box (100%).

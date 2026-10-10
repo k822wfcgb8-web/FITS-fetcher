@@ -77,3 +77,28 @@ def test_search_streams_results_and_reports_failures(client):
 def test_quit(client):
     assert client.post("/api/quit").json() == {"ok": True}
     assert client.quit_calls == [1]
+
+
+def test_objects_inside_streamed_after_results_for_sized_objects(monkeypatch, product):
+    from fits_fetcher.archives.base import InsideGroup, InsideObject
+
+    group = InsideGroup("NGC-2438", "GOOD", "WFPC2/PC", ["F502N", "F656N", "F658N"], 1.0, 2.1)
+
+    class WithInside(Archive):
+        name = "GOOD"
+        def search(self, target, radius_deg):
+            return [product(f) for f in ("F435W", "F555W", "F814W")]
+        def inside(self, target, min_filters):
+            return [group]
+
+    monkeypatch.setattr(webapp, "ARCHIVES", {"GOOD": WithInside})
+    monkeypatch.setattr(webapp, "identify", lambda groups, target: [InsideObject("NGC 2438", 1.0, 2.1, 6.0, groups)])
+    c = TestClient(webapp.create_app(Settings()))
+    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "GOOD", "size_arcmin": 25}).text)
+    names = [e for e, _ in ev]
+    assert names.index("sets") < names.index("inside") and names[-1] == "end"
+    done = [d for e, d in ev if e == "inside"][-1]
+    assert done["state"] == "done" and done["objects"][0]["name"] == "NGC 2438"
+    assert done["objects"][0]["sets"][0]["instrument"] == "WFPC2/PC"
+    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "GOOD"}).text)  # size unknown
+    assert "inside" not in [e for e, _ in ev]

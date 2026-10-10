@@ -29,6 +29,7 @@ from fits_fetcher.config import EDITABLE, Settings, validated
 from fits_fetcher.downloads import DownloadManager, Item, open_folder
 from fits_fetcher.folders import NoFolderDialog, choose_folder
 from fits_fetcher.grouping import build_sets
+from fits_fetcher.inside import identify
 from fits_fetcher.output import thumbnail_png
 from fits_fetcher.processing import Options
 from fits_fetcher.resolve import ResolveError, resolve
@@ -103,9 +104,9 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
 
         async def stream():
             loop = asyncio.get_running_loop()
-            pending = {}
+            pending, instances = {}, {}
             for name in chosen:
-                archive = ARCHIVES[name](run_settings)
+                archive = instances[name] = ARCHIVES[name](run_settings)
                 fut = loop.run_in_executor(None, archive.search, target, QUERY_RADIUS_DEG)
                 pending[asyncio.ensure_future(asyncio.wait_for(fut, settings.archive_timeout_s))] = name
                 yield _sse("status", {"archive": name, "state": "searching"})
@@ -139,6 +140,26 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
                                       pixel_scale_warn_ratio=settings.pixel_scale_warn_ratio)
                     yield _sse("sets", {"target": asdict(target), "sets": [s.to_dict() for s in sets],
                                         "products_found": len(products)})
+
+            # REQ-70: after the results, other objects with colour sets inside a large object (a slower query).
+            if target.size_arcmin:
+                yield _sse("inside", {"state": "searching", "objects": []})
+                groups, failed, objects = [], [], []
+                for name, archive in instances.items():
+                    fut = loop.run_in_executor(None, archive.inside, target, min_filters)
+                    try:
+                        groups += await asyncio.wait_for(fut, settings.archive_timeout_s)
+                    except Exception as e:  # never spoils the results already shown
+                        log.warning("%s: looking for objects inside failed: %s", name, e)
+                        failed.append(name)
+                if groups:
+                    fut = loop.run_in_executor(None, identify, groups, target)
+                    try:
+                        objects = await asyncio.wait_for(fut, settings.archive_timeout_s)
+                    except Exception as e:
+                        log.warning("Identifying objects inside failed: %s", e)
+                        failed.append("SIMBAD")
+                yield _sse("inside", {"state": "done", "objects": [asdict(o) for o in objects], "failed": failed})
             yield _sse("end", {})
 
         return StreamingResponse(stream(), media_type="text/event-stream",

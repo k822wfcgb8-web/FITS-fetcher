@@ -12,10 +12,23 @@ Selection rules come from verification steps 01, 05 and 07 (verify/FINDINGS.md) 
   PS1 `rings.v3.skycell/<proj>/<sub>/<obs_id>.unconv.fits` on ps1images.stsci.edu.
 - Download (REQ-57): HST and JWST files are read with range requests and only the `SCI` extension is fetched;
   for HST mosaics only the rows of the box around the object. PS1 stacks are one compressed image, fetched whole.
+- Pan-STARRS (REQ-68): a box 1.5x the object's size, stitched from the skycells it needs. Skycells of one
+  projection cell share one pixel lattice (verified for M46: same CRVAL, CDELT and PC; CRPIX offsets in whole
+  pixels), so they are pasted together without resampling. PS1 has its own small query sized to the box, run
+  in parallel with the main query, which stays at the object's centre. For each skycell the app fetches either
+  a cutout of just the part inside the box (the PS1 cutout service returns linear 32-bit floats on the same
+  pixel grid, checked 2026-10-10) or the whole compressed file, whichever is smaller.
+- Objects inside a large object (REQ-70) come from a separate query capped at INSIDE_MAX_RADIUS_DEG.
 """
 from __future__ import annotations
 
 import logging
+import math
+import re
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from urllib.parse import urlencode
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
@@ -24,7 +37,7 @@ from astropy.io import fits
 from astroquery.mast import Observations
 
 from fits_fetcher import filters, footprint
-from fits_fetcher.archives.base import Archive, ArchiveError, Fetched, Product, Target
+from fits_fetcher.archives.base import Archive, ArchiveError, Fetched, InsideGroup, Product, Target
 from fits_fetcher.transfer import Progress, Transfer
 
 log = logging.getLogger(__name__)
@@ -44,6 +57,7 @@ PIXEL_SCALE = {
 }
 
 PS1_IMAGES = "https://ps1images.stsci.edu/rings.v3.skycell"
+PS1_CUTOUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
 PS1_STACK_BYTES = 68_000_000  # a whole compressed PS1 stack file (verification step 05)
 DRC_INSTRUMENTS = ("ACS/WFC", "WFC3/UVIS")  # CTE-corrected products; everything else is _drz
 
@@ -53,6 +67,14 @@ MOSAIC_PIXEL_SCALE = 0.04
 # Extra mosaic rows fetched above and below the box, so star cores on the box edge are still enclosed
 # by valid pixels and can be repaired (REQ-38) before the box is cut.
 MOSAIC_MARGIN_PX = 64
+
+PS1_PIXEL_SCALE = 0.25
+PS1_LATTICE_KEYS = ("CRVAL1", "CRVAL2", "CDELT1", "CDELT2", "PC001001", "PC001002", "PC002001", "PC002002")
+# Keywords of a compressed skycell's table header that don't belong in the image we build (REQ-68).
+_NOT_IMAGE = re.compile(r"^(XTENSION|BITPIX|NAXIS\d*|PCOUNT|GCOUNT|TFIELDS|TTYPE\d+|TFORM\d+|TUNIT\d+|THEAP|Z\w*|"
+                        r"EXTNAME|CHECKSUM|DATASUM|BOFFSET|BSOFTEN|BSCALE|BZERO|BLANK)$")
+# REQ-70 search radius cap: at 0.25 deg MAST already took 35 s for M42 (5,222 rows) on 2026-10-10.
+INSIDE_MAX_RADIUS_DEG = 0.25
 
 
 def hst_family(obs_id: str) -> str:
@@ -83,6 +105,16 @@ def grid_key(collection: str, filt: str, obs_id: str) -> str:
         return ""
     rest = [t for t in parts[3:-1] if t != filt.lower()]  # instrument and detector, e.g. wfc3 uvis
     return f"HST visit {parts[1]}_{parts[2]} {'/'.join(rest).upper()}"
+
+
+def ps1_cell(obs_id: str) -> str:
+    """Projection cell of a PS1 skycell ID: 'rings.v3.skycell.0994.022.stk.r' → '0994'."""
+    return obs_id.split(".")[3]
+
+
+def _whole_offset(a, b) -> bool:
+    """Do two headers on one lattice differ by whole pixels?"""
+    return all(abs((a[k] - b[k]) - round(a[k] - b[k])) < 1e-6 for k in ("CRPIX1", "CRPIX2"))
 
 
 def _allowed(collection: str, instrument: str) -> bool:
@@ -130,24 +162,104 @@ def _float(v) -> float | None:
 class MastArchive(Archive):
     name = "MAST"
 
-    def search(self, target: Target, radius_deg: float) -> list[Product]:
-        collections = [c for c in self.settings.mast_collections if c in INSTRUMENTS]
+    def _collections(self) -> list[str]:
+        return [c for c in self.settings.mast_collections if c in INSTRUMENTS]
+
+    def _query(self, target: Target, radius_deg: float, collections: list[str]):
         try:
-            obs = Observations.query_criteria(
+            return Observations.query_criteria(
                 coordinates=SkyCoord(target.ra * u.deg, target.dec * u.deg), radius=radius_deg * u.deg,
                 obs_collection=collections, dataproduct_type="image", calib_level=[3],
                 intentType="science", dataRights="PUBLIC")
         except Exception as e:
             raise ArchiveError(f"MAST search failed: {e}") from e
 
-        products = []
-        for r in obs:
-            if (_allowed(_text(r["obs_collection"]), _text(r["instrument_name"]))
-                    and self._wanted_family(r)
-                    and filters.effective_filter(_text(r["filters"]))
-                    and footprint.contains(_text(r["s_region"]), target.ra, target.dec)):
-                products.append(self._product(r, target))
-        return products
+    def _selected(self, row, collections: list[str]) -> bool:
+        coll = _text(row["obs_collection"])
+        return (coll in collections and _allowed(coll, _text(row["instrument_name"]))
+                and self._wanted_family(row) and bool(filters.effective_filter(_text(row["filters"]))))
+
+    def search(self, target: Target, radius_deg: float) -> list[Product]:
+        pointed = [c for c in self._collections() if c != "PS1"]
+        with ThreadPoolExecutor(2) as pool:  # the two queries run side by side: MAST answers in 3-35 s
+            ps1 = pool.submit(self._ps1_products, target) if "PS1" in self._collections() else None
+            rows = self._query(target, radius_deg, pointed) if pointed else []
+            products = [self._product(r, target) for r in rows
+                        if self._selected(r, pointed) and footprint.contains(_text(r["s_region"]), target.ra, target.dec)]
+            return products + (ps1.result() if ps1 else [])
+
+    # ---------- Pan-STARRS boxes (REQ-68) ----------
+    def _ps1_box_arcmin(self, target: Target) -> float:
+        return footprint.stitch_box_arcmin(target.size_arcmin, self.settings.cutout_default_arcmin)
+
+    def _ps1_products(self, target: Target) -> list[Product]:
+        side = self._ps1_box_arcmin(target)
+        rows = [r for r in self._query(target, side / 60 / 2 * math.sqrt(2), ["PS1"]) if self._selected(r, ["PS1"])]
+        by_filter = defaultdict(list)
+        for r in rows:
+            by_filter[filters.effective_filter(_text(r["filters"]))].append(r)
+        pts = footprint.box_points(target.ra, target.dec, side / 60)
+        out = []
+        for rs in by_filter.values():
+            centre = [r for r in rs if footprint.contains(_text(r["s_region"]), target.ra, target.dec)]
+            if not centre:
+                continue
+            c = min(centre, key=lambda r: footprint.angular_sep_deg(
+                _float(r["s_ra"]) or 0, _float(r["s_dec"]) or 0, target.ra, target.dec))
+            cell = ps1_cell(_text(c["obs_id"]))
+            same = [r for r in rs if ps1_cell(_text(r["obs_id"])) == cell]
+            other = [r for r in rs if ps1_cell(_text(r["obs_id"])) != cell]
+            needed, crosses = {}, False
+            for pt in pts:
+                cover = [r for r in same if footprint.contains(_text(r["s_region"]), *pt)]
+                if cover:
+                    needed.update((_text(r["obs_id"]), r) for r in cover)
+                elif any(footprint.contains(_text(r["s_region"]), *pt) for r in other):
+                    crosses = True
+                    break
+            if crosses:  # until reprojection (REQ-24) exists: the whole skycell holding the object
+                out.append(replace(self._product(c, target),
+                                   product_level="PS1 stack (whole skycell: the box crosses a projection-cell edge)"))
+            else:
+                out.append(self._ps1_box(c, [needed[k] for k in sorted(needed)], side, target))
+        return out
+
+    def _ps1_box(self, centre_row, rows, side: float, target: Target) -> Product:
+        parts = [_text(r["obs_id"]) for r in rows]
+        cell, band = ps1_cell(parts[0]), parts[0].rsplit(".", 1)[-1]
+        subs = [o.split(".")[4] for o in parts]
+        px = math.ceil(round(side * 60 / PS1_PIXEL_SCALE, 6))
+        stitched = f", stitched from {len(parts)} skycells" if len(parts) > 1 else ""
+        # Estimate: cutouts of the box (4 bytes a pixel) or whole files, whichever the fetch will choose.
+        size = min(len(parts) * PS1_STACK_BYTES, int(px * px * 4 * 1.1))
+        return replace(
+            self._product(centre_row, target), obs_id=f"rings.v3.skycell.{cell}.{'+'.join(subs)}.stk.{band}",
+            parts=parts, size_bytes=size, width=px, height=px,
+            product_level=f"PS1 stack, {side:.1f}′ box around the object{stitched}",
+            centre_ra=target.ra, centre_dec=target.dec, offset_arcmin=0.0, grid=f"PS1 projection cell {cell} box",
+            coverage=footprint.coverage([_text(r["s_region"]) for r in rows], target.ra, target.dec, target.size_arcmin))
+
+    # ---------- objects inside (REQ-70) ----------
+    def inside(self, target: Target, min_filters: int) -> list[InsideGroup]:
+        pointed = [c for c in self._collections() if c != "PS1"]
+        if not target.size_arcmin or not pointed:
+            return []
+        radius = min(target.size_arcmin / 2 / 60, INSIDE_MAX_RADIUS_DEG)
+        groups = defaultdict(list)
+        for r in self._query(target, radius, pointed):
+            if (not self._selected(r, pointed) or _float(r["s_ra"]) is None
+                    or footprint.contains(_text(r["s_region"]), target.ra, target.dec)):  # those are in the results
+                continue
+            groups[(_text(r["target_name"]), _text(r["instrument_name"]))].append(r)
+        found = []
+        for (name, inst), rs in groups.items():
+            filts = {filters.effective_filter(_text(r["filters"])) for r in rs}
+            if len(filts) < min_filters:
+                continue
+            order = sorted(filts, key=lambda f: filters.parse(f, inst)[0] or 99)
+            found.append(InsideGroup(name=name, archive=self.name, instrument=inst, filters=order,
+                                     ra=_float(rs[0]["s_ra"]), dec=_float(rs[0]["s_dec"])))
+        return found
 
     def _wanted_family(self, row) -> bool:
         if _text(row["obs_collection"]) != "HST":
@@ -163,6 +275,8 @@ class MastArchive(Archive):
 
     def fetch(self, product: Product, target: Target, transfer: Transfer, box_arcmin: float,
               progress: Progress) -> Fetched:
+        if product.collection == "PS1" and product.parts:
+            return self._fetch_ps1_box(product, target, transfer, progress)
         if product.collection == "PS1":
             path = transfer.fetch(product.url, progress=progress, suffix=".fits")
             with fits.open(path) as h:
@@ -185,6 +299,61 @@ class MastArchive(Archive):
         header["CRPIX2"] = header["CRPIX2"] - r0
         return Fetched(loc.primary, header, path, files=[path], box=(x0, x1, y0 - r0, y1 - r0), box_clipped=clipped,
                        notes=[f"Rows {r0 + 1}-{r1} of the {cols} x {rows} px mosaic {product.obs_id} fetched."])
+
+    def _fetch_ps1_box(self, product: Product, target: Target, transfer: Transfer, progress: Progress) -> Fetched:
+        """REQ-68: read the skycells' headers, fetch the part of each inside the box, describe the canvas."""
+        urls = [file_url("PS1", "GPC1", o) for o in product.parts]
+        headers = [transfer.locate_hdu(url, 1).header for url in urls]  # headers only: a few KB each
+        ci = urls.index(product.url) if product.url in urls else 0
+        hc = headers[ci]
+        for h, part in zip(headers, product.parts):
+            same = all(math.isclose(float(h.get(k, 0)), float(hc.get(k, 0)), rel_tol=0, abs_tol=1e-9) for k in PS1_LATTICE_KEYS)
+            if not (same and _whole_offset(hc, h)):
+                raise ArchiveError(f"Pan-STARRS skycell {part} isn't on the same pixel grid; can't stitch without resampling.")
+        (x0, x1, y0, y1), _ = footprint.pixel_box(hc, target.ra, target.dec, self._ps1_box_arcmin(target), None)
+
+        # What to fetch from each skycell: the box's overlap as a cutout, or the whole file if that's smaller.
+        plan = []
+        for url, part, h in zip(urls, product.parts, headers):
+            dx, dy = round(hc["CRPIX1"] - h["CRPIX1"]), round(hc["CRPIX2"] - h["CRPIX2"])
+            u0, u1 = max(x0 - dx, 0), min(x1 - dx, h["ZNAXIS1"])
+            v0, v1 = max(y0 - dy, 0), min(y1 - dy, h["ZNAXIS2"])
+            if u0 >= u1 or v0 >= v1:
+                continue
+            w, ht = u1 - u0, v1 - v0
+            if w * ht * 4 < PS1_STACK_BYTES:
+                query = urlencode({"red": url.split("ps1images.stsci.edu", 1)[1], "format": "fits",
+                                   "x": u0 + w // 2, "y": v0 + ht // 2, "size": f"{w},{ht}"})
+                plan.append((f"{PS1_CUTOUT}?{query}", 0, w * ht * 4))
+            else:
+                plan.append((url, 1, PS1_STACK_BYTES))
+
+        got: dict[str, tuple[int, int]] = {}
+
+        def part_progress(url):
+            def report(done, total):
+                got[url] = (done, total)
+                progress(sum(d for d, _ in got.values()), sum(got[u][1] if u in got else est for u, _, est in plan))
+            return report
+
+        stitch, paths = [], []
+        for url, hdu, _ in plan:
+            path = transfer.fetch(url, progress=part_progress(url), suffix=".fits")
+            ph = fits.getheader(path, hdu)
+            if not _whole_offset(hc, ph):
+                raise ArchiveError("A Pan-STARRS cutout came back off the skycell's pixel grid.")
+            stitch.append((path, hdu, round(hc["CRPIX1"] - ph["CRPIX1"]) - x0, round(hc["CRPIX2"] - ph["CRPIX2"]) - y0))
+            paths.append(path)
+
+        canvas = fits.Header([c for c in hc.cards if not _NOT_IMAGE.match(c.keyword)])
+        canvas["NAXIS"], canvas["NAXIS1"], canvas["NAXIS2"] = 2, x1 - x0, y1 - y0
+        canvas["CRPIX1"], canvas["CRPIX2"] = hc["CRPIX1"] - x0, hc["CRPIX2"] - y0
+        cutouts = sum(1 for _, hdu, _ in plan if hdu == 0)
+        subs = ", ".join(o.split(".")[4] for o in product.parts)
+        note = (f"Box of {x1 - x0} x {y1 - y0} px around the object from Pan-STARRS skycell(s) {subs} of projection cell "
+                f"{ps1_cell(product.parts[0])} ({cutouts} as cutouts), on one pixel grid with no resampling; "
+                "each piece linear before stitching.")
+        return Fetched(fits.Header(), canvas, paths[0], files=paths, stitch=stitch, notes=[note])
 
     def _product(self, o, target: Target) -> Product:
         coll = _text(o["obs_collection"])
@@ -222,4 +391,5 @@ class MastArchive(Archive):
             pixel_scale_arcsec=scale, size_bytes=size, is_mosaic=mosaic, product_level=level,
             centre_ra=c_ra, centre_dec=c_dec, offset_arcmin=offset, grid=grid_key(coll, filt, obs_id),
             thumbnail_url=_http(_text(o["jpegURL"])), science_extension=1 if coll == "PS1" else "SCI",
+            coverage=footprint.coverage([_text(o["s_region"])], target.ra, target.dec, target.size_arcmin),
         )

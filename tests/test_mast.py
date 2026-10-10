@@ -12,9 +12,9 @@ MISSES = "POLYGON 203.37 47.10 203.57 47.10 203.57 47.30 203.37 47.30"
 
 def obs_table(rows):
     cols = ["obs_collection", "instrument_name", "filters", "obs_id", "s_region", "em_min", "em_max",
-            "t_min", "t_exptime", "jpegURL", "s_ra", "s_dec"]
+            "t_min", "t_exptime", "jpegURL", "s_ra", "s_dec", "target_name"]
     return Table(rows=[[r.get(c, d) for c, d in zip(cols, ["HST", "ACS/WFC", "F814W", "x", COVERS, 700.0, 900.0,
-                                                            58000.0, 1000.0, "", 202.47, 47.20])] for r in rows],
+                                                            58000.0, 1000.0, "", 202.47, 47.20, "TARGET"])] for r in rows],
                  names=cols)
 
 

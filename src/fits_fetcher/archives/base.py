@@ -55,6 +55,8 @@ class Product:
     centre_dec: float | None = None
     offset_arcmin: float | None = None  # how far the object lies from that centre
     grid: str = ""                      # images with the same grid stack pixel-for-pixel (REQ-60); "" = unknown
+    coverage: float | None = None       # share of the object inside the delivered image, 0-1 (REQ-69)
+    parts: list[str] = field(default_factory=list)  # Pan-STARRS skycells stitched into one box (REQ-68)
 
     @property
     def key(self) -> str:
@@ -77,6 +79,30 @@ class Fetched:
     box: tuple[int, int, int, int] | None = None     # (x0, x1, y0, y1) to cut around the object, in these pixels
     box_clipped: bool = False                         # the box ran past the image edge (REQ-58 warning)
     notes: list[str] = field(default_factory=list)   # HISTORY lines about how the image was fetched
+    # REQ-68: pieces pasted into one canvas of `header`'s size: (file, HDU, x offset, y offset) of each piece's
+    # pixel (0, 0) in the canvas. Each piece is linearised on its own before pasting.
+    stitch: list[tuple[Path, int, int, int]] = field(default_factory=list)
+
+
+@dataclass
+class InsideGroup:
+    """Images of one archive target, from one instrument, inside a large searched object (REQ-70)."""
+    name: str           # the archive's target name, e.g. "NGC-2438"
+    archive: str
+    instrument: str
+    filters: list[str]  # in wavelength order
+    ra: float           # where the images point
+    dec: float
+
+
+@dataclass
+class InsideObject:
+    """Another object with colour sets inside the searched object, identified by the resolver (REQ-70)."""
+    name: str           # e.g. "NGC 2438"
+    ra: float
+    dec: float
+    offset_arcmin: float                 # from the searched object's centre
+    sets: list[InsideGroup] = field(default_factory=list)
 
 
 class ArchiveError(Exception):
@@ -94,6 +120,10 @@ class Archive(ABC):
     @abstractmethod
     def search(self, target: Target, radius_deg: float) -> list[Product]:
         """Return combined, public, linear science images whose footprint contains the target's centre (REQ-14)."""
+
+    def inside(self, target: Target, min_filters: int) -> list[InsideGroup]:
+        """REQ-70: colour sets of other targets inside `target` (images that overlap it but miss its centre)."""
+        return []
 
     def fetch(self, product: Product, target: Target, transfer: Transfer, box_arcmin: float,
               progress: Progress) -> Fetched:

@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.9 (approved)
+**Version:** 1.10 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -90,6 +90,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | Item | Requirement |
 |---|---|
 | REQ-06 | Only **linear** data are offered for download. |
+| REQ-68 | *(Resolved Q-48, Q-49)* **Pan-STARRS images are delivered as a box centred on the object, 1.5× its size** (the default cutout box when the size is unknown), **stitched from as many skycells as needed.** Skycells of one projection cell share one pixel lattice (same projection centre, scale and orientation; offsets in whole pixels; verified for M46), so they join exactly with no resampling, and every filter gets the same box (REQ-60). Each skycell is linearised (REQ-36) before stitching; where skycells overlap, each pixel comes from the skycell it lies deepest inside, falling back to another skycell where that one is blank. For each skycell the app fetches only the part inside the box from the PS1 cutout service (linear 32-bit floats on the same pixel grid) or the whole compressed file, whichever is smaller. If the box crosses a projection-cell boundary, the single skycell containing the object is delivered whole until reprojection (REQ-24) is built. Applies to small objects too (M51: a 13.5′ square instead of a whole 24′ skycell). |
 | REQ-36 ✅ | *(Added v1.1)* Products stored with a **non-linear pixel encoding** are converted back to linear values before saving, using the conversion the archive documents. Known case: Pan-STARRS stack images, which I believe store pixels in an asinh-compressed form described by the `BOFFSET` and `BSOFTEN` header keywords *(formula `BOFFSET + BSOFTEN·2·sinh(x / (2.5/ln 10))` confirmed in verification step 06)*. Any product whose encoding can't be linearised is excluded. |
 | S-13 ✅ | "Linear" is defined as: calibrated pixel values proportional to detected flux (e.g., counts, electrons/s, MJy/sr, calibrated flux), with no stretch, gamma, histogram transformation, or 8/16-bit display scaling applied. |
 | S-14 ✅ | Accepted product levels (initial list, *verify each against archive documentation*): HST drizzled `_drz`/`_drc`; JWST Level 3 `_i2d`; Pan-STARRS stacked images; CFHT MegaPipe stacks (CADC); ESO Phase 3 reduced images (VST/VISTA tiles, HAWK-I stacks); Spitzer post-BCD mosaics; WISE/2MASS atlas images; Euclid calibrated images. |
@@ -146,6 +147,8 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 
 ### 7.3 Result metadata to display (suggested)
 - **S-21** ✏️ For each result, the **main row** shows: filter, central wavelength, broadband/narrowband flag, archive + instrument, exposure time, pixel scale, estimated download size. A **click-to-expand details view** shows: telescope, bandwidth, observation date, image dimensions, sky coverage of the object, data product level. *(modified at review)*
+- **REQ-69:** *(Resolved Q-50)* Each image row shows **how much of the object the image covers** (e.g. "covers 51% of M 46"), measured as the fraction of the object's disc (its apparent size from the resolver) inside the image footprint; for a stitched or cut image, of the delivered image. Each colour set shows its lowest coverage (taking the best image in each filter), so sets that show the whole object stand out. When the object's size is unknown, coverage shows "—". This moves S-21's "sky coverage of the object" from the details view to the main row.
+- **REQ-70:** *(Resolved Q-51)* For an object whose size is known, the search also lists **other objects with colour sets inside it**: images that overlap the object but miss its centre, with at least the minimum number of filters (REQ-10) per instrument. *(Resolved Q-52)* The archives' target names are **identified with SIMBAD**: spellings and aliases merge into one entry per object (listing each instrument's filters), the searched object's own pointings and unknown labels are dropped, and an unknown name whose images point at a listed object joins it. Example for M46: NGC 2438 (WFPC2, 4 filters) and OH 231.8+04.2 (WFC3/IR and WFPC2, 4 filters each); M51 goes from 18 archive names to 4 objects. Each has a **Search** button that searches that object. Survey tiles (Pan-STARRS) are not listed. The search area for this list is capped (see implementation notes) so very large objects stay fast.
 - **REQ-59:** *(Resolved Q-39)* The details view also shows the **image centre** as the archive reports it, in decimal degrees and sexagesimal (e.g. `RA 202.46741° (13h 29m 52.18s), Dec +47.19999° (+47° 12′ 00.0″)`), and **how far the object lies from that centre** (″ under 1′, otherwise ′). For an HST mosaic it is labelled *mosaic centre*, because the delivered file is cut around the object.
 - **REQ-60:** *(Resolved Q-40)* Within a colour set, images in **two or more filters that share one pixel grid** are marked as a matched group, so the user can see without opening the details which images stack pixel-for-pixel with no registration (PixInsight, Siril). Each group gets a letter and colour (*Grid A*, *Grid B* …): a coloured bar on the row's left edge, a chip under the filter name, and a legend line under the set name listing its filters, with a **Select** button that ticks the whole group. Only grids confirmed in verification step 12 are marked: HST single-visit images from the same visit and detector, HST mosaics from the same skycell, and Pan-STARRS stacks from the same skycell. JWST and different-visit images are not marked, since they need registration.
 
@@ -289,6 +292,11 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-45~~ | Choosing folders: **resolved → path box plus Choose… system dialog (REQ-65)** | — |
 | ~~Q-46~~ | Saving settings: **resolved → Save / Cancel / Reset to defaults (REQ-66)** | — |
 | ~~Q-47~~ | Large masked holes around bright stars: **resolved → second, larger limit (50,000 px) for holes whose edge is bright starlight; streaks not touching the star stay black (REQ-67)** | — |
+| ~~Q-48~~ | Pan-STARRS images covering only part of a large object (M46: 51%): **resolved → stitch skycells into one box around the object (REQ-68)** | — |
+| ~~Q-49~~ | Size of the Pan-STARRS box: **resolved → 1.5× the object, for all objects (REQ-68)** | — |
+| ~~Q-50~~ | Showing coverage of the object: **resolved → percentage on the main row and per set (REQ-69)** | — |
+| ~~Q-51~~ | Images of other objects inside a large object: **resolved → listed with a Search button (REQ-70)** | — |
+| ~~Q-52~~ | Noisy 'Also inside' list (pointings, spellings, aliases): **resolved → identify target names with SIMBAD (REQ-70)** | — |
 
 ---
 
@@ -316,3 +324,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.7 | 2026-10-10 | Added and resolved Q-41–Q-43: download options in the download bar (REQ-61), per-row progress (REQ-62), end-of-batch summary with Open folder (REQ-63). Build order: download and processing first with MAST only; reprojection (REQ-24/29) in a later build. |
 | 1.8 | 2026-10-10 | Added and resolved Q-44–Q-46: settings dialog (REQ-64), folder choice (REQ-65), saving behaviour (REQ-66). |
 | 1.9 | 2026-10-10 | Added and resolved Q-47: larger repair limit for holes next to bright stars (REQ-67), after M37 Pan-STARRS i/z showed black masked areas. |
+| 1.10 | 2026-10-10 | Added and resolved Q-48–Q-52 after the M46 search: Pan-STARRS box stitched from skycells (REQ-68), coverage shown on each row (REQ-69), objects inside a large object listed (REQ-70). |

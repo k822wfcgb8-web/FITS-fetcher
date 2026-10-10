@@ -54,6 +54,8 @@ class Options:
     reproject: bool = False  # REQ-24: not built yet
 
     def for_product(self, product: Product) -> Options:
+        if product.parts:  # a Pan-STARRS box is already cut to 1.5x the object (REQ-68)
+            return replace(self, cutout=False)
         return replace(self, cutout=True) if product.is_mosaic else self  # mosaics are always cut (REQ-58)
 
     def cards(self) -> list[tuple[str, object, str]]:
@@ -90,6 +92,8 @@ class Result:
 # ---------- steps ----------
 def read_science(f: Fetched) -> np.ndarray:
     """The science array as native-order float32 with any BSCALE/BZERO applied."""
+    if f.stitch:
+        return stitch(f)
     if f.hdu is not None:
         with fits.open(f.path) as h:
             return np.asarray(h[f.hdu].data, dtype=np.float32)
@@ -112,6 +116,35 @@ def read_science(f: Fetched) -> np.ndarray:
         data *= np.float32(scale)
         data += np.float32(zero)
     return data
+
+
+def stitch(f: Fetched) -> np.ndarray:
+    """REQ-68: paste pieces on one pixel lattice into a canvas the size of `f.header`.
+
+    Each piece is linearised first (REQ-36: every Pan-STARRS skycell has its own BOFFSET/BSOFTEN). Where pieces
+    overlap, a pixel comes from the piece it lies deepest inside (farthest from that piece's edge); blank pixels
+    (NaN or 0) never win, so a hole in one piece is filled from its neighbour where that has data.
+    """
+    ny, nx = f.header["NAXIS2"], f.header["NAXIS1"]
+    canvas = np.full((ny, nx), np.nan, dtype=np.float32)
+    depth = np.full((ny, nx), -1, dtype=np.int16)
+    for path, hdu, ox, oy in f.stitch:
+        with fits.open(path) as h:
+            part = np.asarray(h[hdu].data, dtype=np.float32)
+            linearise(part, h[hdu].header)
+        py, px = part.shape
+        cx0, cy0, cx1, cy1 = max(ox, 0), max(oy, 0), min(ox + px, nx), min(oy + py, ny)
+        if cx0 >= cx1 or cy0 >= cy1:
+            continue
+        piece = part[cy0 - oy:cy1 - oy, cx0 - ox:cx1 - ox]
+        u, v = np.arange(cx0 - ox, cx1 - ox), np.arange(cy0 - oy, cy1 - oy)
+        d = np.minimum.outer(np.minimum(v, py - 1 - v), np.minimum(u, px - 1 - u)).astype(np.int16)
+        win = (slice(cy0, cy1), slice(cx0, cx1))
+        take = np.isfinite(piece) & (piece != 0) & (d > depth[win])
+        canvas[win][take] = piece[take]
+        depth[win][take] = d[take]
+        del part, piece, d, take
+    return canvas
 
 
 def linearise(data: np.ndarray, header: fits.Header) -> str | None:

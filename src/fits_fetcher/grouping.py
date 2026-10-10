@@ -62,8 +62,15 @@ class ColourSet:
             bits.append(f"{len(narrow)} narrowband ({', '.join(labels)})")
         return " + ".join(bits)
 
+    @property
+    def coverage(self) -> float | None:
+        """REQ-69: the lowest coverage over filters, taking the best image in each; None if unknown."""
+        best = [max((p.coverage for p in r.products if p.coverage is not None), default=None) for r in self.rows]
+        return None if any(b is None for b in best) else min(best)
+
     def to_dict(self) -> dict:
         return {"name": self.name, "instruments": self.instruments, "readiness": self.readiness,
+                "coverage": self.coverage,
                 "warnings": self.warnings, "rows": [r.to_dict() for r in self.rows],
                 "grids": [g.to_dict() for g in self.grids]}
 

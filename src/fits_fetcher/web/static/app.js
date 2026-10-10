@@ -45,6 +45,7 @@ const fmt = {
   position(ra, dec) {
     return `RA ${ra.toFixed(5)}° (${fmt.hms(ra)}), Dec ${dec >= 0 ? "+" : ""}${dec.toFixed(5)}° (${fmt.dms(dec)})`;
   },
+  cover(f) { return f == null ? "—" : f >= 0.995 ? "100%" : `${Math.floor(f * 100)}%`; },
   offset(arcmin) { return arcmin < 1 ? `${(arcmin * 60).toFixed(1)}″` : `${arcmin.toFixed(2)}′`; },
 };
 
@@ -134,6 +135,8 @@ $("search").addEventListener("click", () => {
 
   $("archive-status").replaceChildren();
   $("results").replaceChildren();
+  $("inside").replaceChildren();
+  $("inside").hidden = true;
   $("results-summary").textContent = "Searching…";
   $("results-panel").hidden = false;
   $("cancel").hidden = false;
@@ -144,6 +147,7 @@ $("search").addEventListener("click", () => {
   state.source = src;
   src.addEventListener("status", (e) => showStatus(JSON.parse(e.data)));
   src.addEventListener("sets", (e) => showSets(JSON.parse(e.data)));
+  src.addEventListener("inside", (e) => showInside(JSON.parse(e.data)));
   src.addEventListener("end", () => finishSearch());
   src.onerror = () => { if (state.source) finishSearch("The connection to FITS-fetcher was lost."); };
 });
@@ -183,6 +187,62 @@ function showSets(data) {
   updateSelection();
 }
 
+// ---------- coverage of the object (REQ-69) ----------
+function objectName() { return state.target ? state.target.matched_id || state.target.query : "the object"; }
+
+function coverageTitle() {
+  return state.target?.size_arcmin ? `Share of ${objectName()} (${(+state.target.size_arcmin).toFixed(1)}′ across) inside this image`
+    : "The object's size is unknown, so coverage can't be measured.";
+}
+
+function setCoverage(set) {
+  if (set.coverage == null) return null;
+  const whole = set.coverage >= 0.995;
+  return el("span", { class: `chip ${whole ? "whole" : ""}`, title: "Lowest coverage over the filters, taking the best image in each" },
+    whole ? `whole ${objectName()} in every filter` : `at least ${fmt.cover(set.coverage)} of ${objectName()} in every filter`);
+}
+
+// ---------- other objects inside (REQ-70) ----------
+function showInside(data) {
+  const box = $("inside");
+  if (data.state === "searching") {
+    box.replaceChildren(el("p", { class: "muted" }, `Looking for other objects with colour sets inside ${objectName()}…`));
+    box.hidden = false;
+    return;
+  }
+  if (!data.objects.length) {
+    box.replaceChildren(...(data.failed?.length ? [el("p", { class: "muted" }, `Couldn't look for other objects inside ${objectName()}.`)] : []));
+    box.hidden = !data.failed?.length;
+    return;
+  }
+  box.replaceChildren(el("h3", {}, `Also inside ${objectName()}`),
+    el("ul", { class: "inside-list" }, data.objects.map((o) => el("li", {},
+      el("div", { class: "inside-head" },
+        el("button", { type: "button", class: "secondary small", onclick: () => searchInside(o) }, "Search"),
+        el("strong", {}, o.name), el("span", { class: "muted" }, `${fmt.offset(o.offset_arcmin)} from the centre`)),
+      ...o.sets.map((s) => el("div", { class: "muted inside-set" },
+        `${s.archive} · ${s.instrument} · ${s.filters.length} filters (${s.filters.join(", ")})`))))));
+  box.hidden = false;
+}
+
+async function searchInside(o) {
+  // The resolver's own entry gives the object's size; if that lookup fails, search at its position.
+  let target = { query: o.name, matched_id: o.name, ra: o.ra, dec: o.dec, object_type: "", size_arcmin: null };
+  try {
+    const r = await fetch(`/api/resolve?q=${encodeURIComponent(o.name)}`);
+    if (r.ok) {
+      const found = (await r.json()).targets;
+      const near = (t) => Math.hypot((t.ra - o.ra) * Math.cos(o.dec * Math.PI / 180), t.dec - o.dec);
+      const best = found.sort((a, b) => near(a) - near(b))[0];
+      if (best && near(best) < 0.1) target = best;
+    }
+  } catch (_) { /* fall back to the position */ }
+  $("name").value = o.name;
+  setTarget(target);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  $("search").click();
+}
+
 // Matched grid groups (REQ-60) cycle through the --grid-N colours in style.css.
 const GRID_COLOURS = 6;
 const gridStyle = (i) => `--gc: var(--grid-${i % GRID_COLOURS})`;
@@ -201,17 +261,17 @@ function renderSet(set) {
   for (const row of set.rows) {
     const line = row.line ? ` · ${row.line}` : "";
     body.append(el("tr", { class: "filter-row" },
-      el("td", { colspan: 9 }, `${row.filter} — ${fmt.um(row.wavelength_um)} · ${row.band_type}band${line}`,
+      el("td", { colspan: 10 }, `${row.filter} — ${fmt.um(row.wavelength_um)} · ${row.band_type}band${line}`,
         el("span", { class: "muted" }, `  (${row.products.length} image${row.products.length === 1 ? "" : "s"})`))));
     for (const p of row.products) body.append(...renderProduct(p, gridOf.get(p.key)));
   }
   return el("details", { class: "set", open: true },
     el("summary", {}, el("span", { class: "set-name" }, set.name.replaceAll("_", " · ")),
-      el("span", { class: "muted" }, set.readiness), allBtn),
+      el("span", { class: "muted" }, set.readiness), setCoverage(set), allBtn),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
     el("div", { class: "table-wrap" }, el("table", {},
-      el("thead", {}, el("tr", {}, ["", "Preview", "Filter", "Archive / instrument", "Exposure", "Pixel scale", "Download", "Date", ""]
+      el("thead", {}, el("tr", {}, ["", "Preview", "Filter", "Archive / instrument", "Exposure", "Covers", "Pixel scale", "Download", "Date", ""]
         .map((h) => el("th", {}, h)))),
       body)));
 }
@@ -227,7 +287,7 @@ function renderProduct(p, grid) {
     ? el("div", {}, `${p.is_mosaic ? "Mosaic" : "Image"} centre: ${fmt.position(p.centre_ra, p.centre_dec)}` +
       (p.offset_arcmin != null ? ` · Object is ${fmt.offset(p.offset_arcmin)} from centre` : ""))
     : null;
-  const details = el("tr", { ...mark, hidden: true }, el("td", {}), el("td", { class: "details-cell", colspan: 8 },
+  const details = el("tr", { ...mark, hidden: true }, el("td", {}), el("td", { class: "details-cell", colspan: 9 },
     `Telescope: ${p.telescope} · Bandwidth: ${fmt.um(p.bandwidth_um)} · Product: ${p.product_level} · ` +
     `Observation: ${p.obs_id}${p.is_mosaic ? " · Cut around the object from a multi-visit mosaic" : ""}`, centre));
   const more = el("button", { type: "button", class: "secondary", onclick: () => { details.hidden = !details.hidden; } }, "Details");
@@ -238,6 +298,7 @@ function renderProduct(p, grid) {
         `Grid ${grid.label}`)) : null),
     el("td", {}, `${p.archive} · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null),
     el("td", {}, fmt.exp(p.exptime_s)),
+    el("td", { title: coverageTitle() }, fmt.cover(p.coverage)),
     el("td", {}, p.pixel_scale_arcsec ? `${p.pixel_scale_arcsec}″` : "?"),
     el("td", {}, fmt.size(p.size_bytes), statusLine(p.key)),
     el("td", {}, p.obs_date || "?"),
