@@ -3,6 +3,9 @@
 Searches run each selected archive in a worker thread and stream results as each one answers (S-32).
 An archive that fails or times out is reported without stopping the others (S-03, S-33). Closing the
 page's event stream (Cancel) stops the stream; results still arriving from archives are discarded (S-07).
+
+Downloads (REQ-61–63) are started with the keys of products a search returned; the page never sends URLs,
+so the server only fetches files it found itself. Progress streams as server-sent events.
 """
 from __future__ import annotations
 
@@ -13,13 +16,17 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from fits_fetcher import __version__, filters
-from fits_fetcher.archives import ARCHIVES, PLANNED, ArchiveError, Target
+from fits_fetcher import __version__, filters, footprint
+from fits_fetcher.archives import ARCHIVES, PLANNED, ArchiveError, Product, Target
 from fits_fetcher.config import Settings
+from fits_fetcher.downloads import DownloadManager, Item, open_folder
 from fits_fetcher.grouping import build_sets
+from fits_fetcher.output import thumbnail_png
+from fits_fetcher.processing import Options
 from fits_fetcher.resolve import ResolveError, resolve
 
 log = logging.getLogger(__name__)
@@ -30,14 +37,31 @@ STATIC = Path(__file__).parent / "static"
 QUERY_RADIUS_DEG = 0.02
 
 
+PROGRESS_INTERVAL_S = 0.3
+
+
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+class DownloadItem(BaseModel):
+    key: str
+    sets: list[str] = []
+
+
+class DownloadRequest(BaseModel):
+    target: dict
+    items: list[DownloadItem]
+    star_repair: bool
+    cutout: bool
 
 
 def create_app(settings: Settings | None = None, on_quit=None) -> FastAPI:
     settings = settings or Settings.load()
     app = FastAPI(title="FITS-fetcher", version=__version__)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    known: dict[str, Product] = {}  # every product a search has returned, by key
+    manager = DownloadManager(settings, ARCHIVES)
 
     @app.get("/")
     def index():
@@ -99,6 +123,7 @@ def create_app(settings: Settings | None = None, on_quit=None) -> FastAPI:
                                               "message": f"{name} search failed unexpectedly ({type(e).__name__}). See the log file."})
                         continue
                     products.extend(found)
+                    known.update((p.key, p) for p in found)
                     yield _sse("status", {"archive": name, "state": "done", "count": len(found)})
                     sets = build_sets(products, min_filters=min_filters, mix_instruments=mix_instruments,
                                       band_type=band_type, lines=line_set,
@@ -109,6 +134,67 @@ def create_app(settings: Settings | None = None, on_quit=None) -> FastAPI:
 
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/download")
+    def start_download(req: DownloadRequest):
+        fields = {f for f in Target.__dataclass_fields__}
+        target = Target(**{k: v for k, v in req.target.items() if k in fields})
+        missing = [i.key for i in req.items if i.key not in known]
+        if missing or not req.items:
+            raise HTTPException(400, "Some selected images are no longer known to the server. Search again.")
+        options = Options(star_repair=req.star_repair, repair_max_area=settings.star_repair_max_area,
+                          cutout=req.cutout,
+                          box_arcmin=footprint.box_arcmin(target.size_arcmin, settings.cutout_default_arcmin))
+        job = manager.start(target, [Item(known[i.key], i.sets) for i in req.items], options)
+        return job.snapshot()
+
+    def _job(job_id: str):
+        job = manager.get(job_id)
+        if job is None:
+            raise HTTPException(404, "No such download.")
+        return job
+
+    @app.get("/api/download/{job_id}/events")
+    async def download_events(job_id: str):
+        job = _job(job_id)
+
+        async def stream():
+            seen = -1
+            while True:
+                snap = job.snapshot()
+                if snap["version"] != seen:
+                    seen = snap["version"]
+                    yield _sse("progress", snap)
+                if snap["finished"]:
+                    yield _sse("end", snap)
+                    return
+                await asyncio.sleep(PROGRESS_INTERVAL_S)
+
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/download/{job_id}/cancel")
+    def cancel_download(job_id: str):
+        _job(job_id).cancel()
+        return {"ok": True}
+
+    @app.post("/api/download/{job_id}/open")
+    def open_download_folder(job_id: str):
+        folder = _job(job_id).object_dir
+        if not folder.is_dir():
+            raise HTTPException(404, "The folder doesn't exist yet: nothing was saved.")
+        open_folder(folder)
+        return {"ok": True}
+
+    @app.get("/api/download/{job_id}/thumb")
+    def download_thumbnail(job_id: str, key: str):
+        item = next((it for it in _job(job_id).items if it.product.key == key), None)
+        if item is None or not item.paths:
+            raise HTTPException(404, "Not downloaded.")
+        try:
+            png = thumbnail_png(Path(item.paths[0]))
+        except (OSError, ValueError) as e:
+            raise HTTPException(500, f"Couldn't make a thumbnail: {e}") from e
+        return Response(png, media_type="image/png")
 
     @app.post("/api/quit")
     def quit_app():

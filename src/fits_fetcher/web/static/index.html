@@ -64,9 +64,24 @@
       <h2>Results</h2>
       <p id="results-summary" class="muted"></p>
       <div id="results"></div>
-      <div class="row download-bar">
-        <span id="selection-summary" class="muted">Nothing selected.</span>
-        <button id="download" disabled title="Downloading is the next part to be built">Download selected (coming next)</button>
+      <div class="download-bar">
+        <p id="selection-summary" class="muted">Nothing selected.</p>
+        <div class="row wrap">
+          <label class="check"><input id="opt-repair" type="checkbox"> Repair star cores</label>
+          <label class="check"><input id="opt-cutout" type="checkbox"> <span id="opt-cutout-label">Cut around the object</span></label>
+          <label class="check unavailable"><input type="checkbox" disabled> Reproject onto a common grid (not built yet)</label>
+          <span class="grow"></span>
+          <button id="download" disabled>Download selected</button>
+          <button id="download-cancel" class="secondary" hidden>Cancel download</button>
+        </div>
+        <div id="download-progress" class="row wrap" hidden>
+          <progress id="overall" max="1" value="0"></progress>
+          <span id="overall-text" class="muted"></span>
+        </div>
+        <div id="download-summary" class="row wrap" hidden>
+          <span id="download-summary-text"></span>
+          <button id="open-folder" class="secondary">Open folder</button>
+        </div>
       </div>
     </section>
   </main>

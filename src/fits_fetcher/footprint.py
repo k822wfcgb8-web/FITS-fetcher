@@ -92,3 +92,35 @@ def area_deg2(s_region: str) -> float | None:
             pts = [(math.degrees(x), math.degrees(y)) for x, y in pts]
             total += abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]))) / 2
     return total or None
+
+
+def box_arcmin(size_arcmin: float | None, default_arcmin: float) -> float:
+    """Cut-around size (REQ-25, REQ-58): 2x the object's size, or the default when the size is unknown."""
+    return 2 * size_arcmin if size_arcmin else default_arcmin
+
+
+def pixel_box(header, ra: float, dec: float, size_arcmin: float, shape: tuple[int, int]
+              ) -> tuple[tuple[int, int, int, int], bool]:
+    """Square pixel box centred on (ra, dec): ((x0, x1, y0, y1), clipped), zero-based, end-exclusive.
+
+    Integer arithmetic only after one rounding, so images on one pixel grid get exactly the same box
+    and stay pixel-aligned (REQ-58, REQ-60). `clipped` is True when the box ran past the image edge.
+    """
+    import warnings
+
+    from astropy.wcs import WCS, FITSFixedWarning
+    from astropy.wcs.utils import proj_plane_pixel_scales
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        w = WCS(header).celestial
+    x, y = w.all_world2pix([[ra, dec]], 0)[0]
+    scale_arcsec = float(proj_plane_pixel_scales(w).mean()) * 3600
+    n = max(1, math.ceil(round(size_arcmin * 60 / scale_arcsec, 6)))  # round: 21.0000001 px is 21
+    ny, nx = shape
+    x0, y0 = math.floor(x + 0.5) - n // 2, math.floor(y + 0.5) - n // 2
+    box = (max(0, x0), min(nx, x0 + n), max(0, y0), min(ny, y0 + n))
+    clipped = box != (x0, x0 + n, y0, y0 + n)
+    if box[0] >= box[1] or box[2] >= box[3]:
+        raise ValueError("The object lies outside this image.")
+    return box, clipped

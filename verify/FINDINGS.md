@@ -139,3 +139,22 @@ Science-extension headers only, read over HTTP on 2026-10-10.
 - **Pan-STARRS stacks in the same skycell share one grid** across all five bands (M1 skycell 1784.059: 6279 × 6261 px, identical `CRVAL`/`CRPIX`/`CDELT`/`PC`). A neighbouring skycell (M51 2261.085 vs 2261.075) has the same projection centre but a different `CRPIX2`, so it does not line up.
 - **HST multi-visit mosaics** of one skycell share one grid (step 11).
 - **JWST `_i2d`** products are resampled per filter, often at different pixel scales (0.031″ / 0.063″ for NIRCam); not treated as shared.
+
+## 13 — Download and processing chain on real MAST files (`13_download_chain.py`)
+
+Full chain (fetch → linearise → star-core repair → cutout → NaN to 0 → header → check → save) on M51, 2026-10-10. Five products, 16–18 s in total.
+
+| Product | Fetched | Output | Repair | Siril |
+|---|---|---|---|---|
+| HST WFC3/IR F110W single-visit | `SCI` only (range read) | 1185 × 1071 px | 0 regions | loads |
+| JWST MIRI F770W `_i2d` | `SCI` only (range read) | 1112 × 1033 px | 3 regions, 14 px | loads |
+| PS1 r stack | whole file (68 MB, Rice-compressed) | 6307 × 6289 px | 12 regions, 1,898 px | loads |
+| HST ACS/WFC mosaics, 2 filters | box rows only (+64-row margin) | 1500 × 1500 px each (1′ box) | 0 regions | loads |
+
+- **Range reads:** MAST (`Download/file`) and `ps1images.stsci.edu` both answer `Range` requests with 206.
+- **Mosaic cutouts:** the object is at the box centre (750.1, 750.2), and both filters have identical `NAXIS`, `CRVAL`, `CRPIX` and `PC`/`CDELT`. They stack pixel-for-pixel, as REQ-58 requires.
+- **PS1 WCS:** the old `PC001001` keywords are rewritten as `PC1_1`/`CDELT`. Positions agree with the original header to 10⁻⁸″ across the image.
+- **PS1 linearity:** `BOFFSET`/`BSOFTEN` are gone from the output. The median sky is 8.3 and the brightest pixels are about 10⁶, so the values are linear, not asinh-compressed.
+- **Clean-up:** no cache files were left once the outputs were saved (REQ-23).
+- **siril-cli:** `-d` changes the working folder before the `-s` script is read, so the script path must be absolute.
+- **Not yet tested on real files:** a full-size HST mosaic (about 1.8 GB for M51's 18′ box), to check memory use during repair.

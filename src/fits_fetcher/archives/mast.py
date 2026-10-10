@@ -10,6 +10,8 @@ Selection rules come from verification steps 01, 05 and 07 (verify/FINDINGS.md) 
   60 s for M51 (26,862 file entries for 168 observations). Patterns checked against MAST on 2026-10-10:
   HST ACS/WFC and WFC3/UVIS `<obs_id>_drc.fits`, other HST `<obs_id>_drz.fits`, JWST `<obs_id>_i2d.fits`,
   PS1 `rings.v3.skycell/<proj>/<sub>/<obs_id>.unconv.fits` on ps1images.stsci.edu.
+- Download (REQ-57): HST and JWST files are read with range requests and only the `SCI` extension is fetched;
+  for HST mosaics only the rows of the box around the object. PS1 stacks are one compressed image, fetched whole.
 """
 from __future__ import annotations
 
@@ -18,10 +20,12 @@ import logging
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
+from astropy.io import fits
 from astroquery.mast import Observations
 
 from fits_fetcher import filters, footprint
-from fits_fetcher.archives.base import Archive, ArchiveError, Product, Target
+from fits_fetcher.archives.base import Archive, ArchiveError, Fetched, Product, Target
+from fits_fetcher.transfer import Progress, Transfer
 
 log = logging.getLogger(__name__)
 DOWNLOAD = "https://mast.stsci.edu/api/v0.1/Download/file?uri="
@@ -46,6 +50,9 @@ DRC_INSTRUMENTS = ("ACS/WFC", "WFC3/UVIS")  # CTE-corrected products; everything
 # HST multi-visit mosaics: one skycell is about 21,258 px wide at 0.04"/px (verified on M51's skycell).
 SKYCELL_WIDTH_PX = 21258
 MOSAIC_PIXEL_SCALE = 0.04
+# Extra mosaic rows fetched above and below the box, so star cores on the box edge are still enclosed
+# by valid pixels and can be repaired (REQ-38) before the box is cut.
+MOSAIC_MARGIN_PX = 64
 
 
 def hst_family(obs_id: str) -> str:
@@ -152,8 +159,32 @@ class MastArchive(Archive):
         return family == "single-visit" or (family == "mosaic" and self.settings.hst_show_mosaics)
 
     def _mosaic_box_arcmin(self, target: Target) -> float:
-        """REQ-25/REQ-58: 2x the object's size, or the default when the size is unknown."""
-        return 2 * target.size_arcmin if target.size_arcmin else self.settings.cutout_default_arcmin
+        return footprint.box_arcmin(target.size_arcmin, self.settings.cutout_default_arcmin)
+
+    def fetch(self, product: Product, target: Target, transfer: Transfer, box_arcmin: float,
+              progress: Progress) -> Fetched:
+        if product.collection == "PS1":
+            path = transfer.fetch(product.url, progress=progress, suffix=".fits")
+            with fits.open(path) as h:
+                primary, header = h[0].header.copy(), h[1].header.copy()
+            return Fetched(primary, header, path, hdu=1, files=[path])
+
+        loc = transfer.locate_hdu(product.url, product.science_extension)
+        header = loc.header.copy()
+        if not product.is_mosaic:
+            path = transfer.fetch(product.url, loc.data_offset, loc.data_size, progress)
+            return Fetched(loc.primary, header, path, files=[path])
+
+        # REQ-58: only the rows of the box around the object (plus a margin), each a full mosaic row.
+        rows, cols = header["NAXIS2"], header["NAXIS1"]
+        (x0, x1, y0, y1), clipped = footprint.pixel_box(header, target.ra, target.dec, box_arcmin, (rows, cols))
+        r0, r1 = max(0, y0 - MOSAIC_MARGIN_PX), min(rows, y1 + MOSAIC_MARGIN_PX)
+        row_bytes = abs(header["BITPIX"]) // 8 * cols
+        path = transfer.fetch(product.url, loc.data_offset + r0 * row_bytes, (r1 - r0) * row_bytes, progress)
+        header["NAXIS2"] = r1 - r0
+        header["CRPIX2"] = header["CRPIX2"] - r0
+        return Fetched(loc.primary, header, path, files=[path], box=(x0, x1, y0 - r0, y1 - r0), box_clipped=clipped,
+                       notes=[f"Rows {r0 + 1}-{r1} of the {cols} x {rows} px mosaic {product.obs_id} fetched."])
 
     def _product(self, o, target: Target) -> Product:
         coll = _text(o["obs_collection"])

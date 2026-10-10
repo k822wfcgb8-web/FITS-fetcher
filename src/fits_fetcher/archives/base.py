@@ -2,9 +2,16 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from astropy.io import fits
 
 from fits_fetcher.config import Settings
+
+if TYPE_CHECKING:
+    from fits_fetcher.transfer import Progress, Transfer
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,19 @@ class Product:
         return d
 
 
+@dataclass
+class Fetched:
+    """A science image downloaded to the cache, ready to be read into memory by the processing step."""
+    primary: fits.Header            # the file's primary header (instrument, filter, programme keywords)
+    header: fits.Header             # the science HDU's header; WCS shifted if only some rows were fetched
+    path: Path                      # file holding the pixels
+    hdu: int | str | None = None    # None: `path` holds only the science data bytes (REQ-57); else the HDU to open
+    files: list[Path] = field(default_factory=list)  # cache files to delete once the output is saved (REQ-23)
+    box: tuple[int, int, int, int] | None = None     # (x0, x1, y0, y1) to cut around the object, in these pixels
+    box_clipped: bool = False                         # the box ran past the image edge (REQ-58 warning)
+    notes: list[str] = field(default_factory=list)   # HISTORY lines about how the image was fetched
+
+
 class ArchiveError(Exception):
     """An archive was unreachable or returned something unusable (S-03, S-33)."""
 
@@ -74,3 +94,9 @@ class Archive(ABC):
     @abstractmethod
     def search(self, target: Target, radius_deg: float) -> list[Product]:
         """Return combined, public, linear science images whose footprint contains the target's centre (REQ-14)."""
+
+    def fetch(self, product: Product, target: Target, transfer: Transfer, box_arcmin: float,
+              progress: Progress) -> Fetched:
+        """Download the science image of `product` (REQ-08, REQ-57). `box_arcmin` is the cut-around size, used by
+        products that are always cut (REQ-58) to fetch only the rows needed."""
+        raise ArchiveError(f"Downloading from {self.name} isn't built yet.")

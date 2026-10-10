@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.6 (approved)
+**Version:** 1.7 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -173,6 +173,9 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 - **S-27** ✅ Resume interrupted downloads; skip files already downloaded.
 - **REQ-54:** *(Resolved Q-32)* Because originals are deleted (REQ-23), "already downloaded" is judged from the **saved output file**. Each output records the processing settings that produced it (star-core repair on/off and size limit, cutout on/off and size, reprojection on/off and target grid) in its FITS header. A file is skipped only if an output with the same name exists **and** its recorded settings match the current ones; otherwise the product is downloaded and processed again, replacing the old output.
 - **S-28** ✅ Limit parallel downloads per archive (default 3, adjustable in settings) to avoid overloading archive servers.
+- **REQ-61:** *(Resolved Q-41)* The processing options for a download (star-core repair, cutout, and later reprojection) are **tick boxes in the download bar** next to the Download button, pre-set from the saved settings. Changing them affects that download only; the saved defaults stay in the settings panel.
+- **REQ-62:** *(Resolved Q-42)* Download progress is shown **in each selected result row** (waiting, downloading with percentage, processing, saved, skipped, failed with the reason), with an **overall progress bar and a Cancel button** in the download bar.
+- **REQ-63:** *(Resolved Q-43)* When a download batch finishes, the app shows a **summary** (files saved, skipped and failed, and the output folder) with an **Open folder** button that opens the object's folder in the file manager. The folder is not opened automatically.
 
 ### 8.3 Saturated star-core repair *(added v1.1)*
 
@@ -275,6 +278,9 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-37~~ | Siril test (REQ-50): **resolved → Siril 1.4.4 installed, `siril-cli` scripting confirmed** | — |
 | ~~Q-39~~ | Exact position in the details view: **resolved → image centre in degrees and sexagesimal, plus the object's offset from it (REQ-59)** | — |
 | ~~Q-40~~ | Marking images that can be superimposed: **resolved → same pixel grid only (HST same visit, HST mosaic skycell, PS1 skycell), coloured edge + chip + legend with a Select button (REQ-60)** | — |
+| ~~Q-41~~ | Where download options are chosen: **resolved → tick boxes in the download bar, pre-set from settings (REQ-61)** | — |
+| ~~Q-42~~ | Download progress display: **resolved → status in each result row, overall bar and Cancel in the download bar (REQ-62)** | — |
+| ~~Q-43~~ | End of a download batch: **resolved → summary with an Open folder button (REQ-63)** | — |
 
 ---
 
@@ -299,3 +305,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.4 | 2026-10-10 | Added and resolved Q-38: HST product families (REQ-58). |
 | 1.5 | 2026-10-10 | Added and resolved Q-39: image centre and object offset in the details view (REQ-59). |
 | 1.6 | 2026-10-10 | Added and resolved Q-40: matched-grid marking (REQ-60), after verification step 12. |
+| 1.7 | 2026-10-10 | Added and resolved Q-41–Q-43: download options in the download bar (REQ-61), per-row progress (REQ-62), end-of-batch summary with Open folder (REQ-63). Build order: download and processing first with MAST only; reprojection (REQ-24/29) in a later build. |

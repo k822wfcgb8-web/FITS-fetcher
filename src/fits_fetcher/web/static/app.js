@@ -2,7 +2,8 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { info: null, target: null, source: null, sets: [], selected: new Map() };
+const state = { info: null, target: null, source: null, sets: [], selected: new Map(),
+  job: null, jobSource: null, dl: new Map() /* key → item status from the running or last download */ };
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -55,6 +56,8 @@ async function init() {
   $("min-filters").value = info.settings.min_filters;
   $("mix").checked = info.settings.mix_instruments;
   $("hst-mosaics").checked = info.settings.hst_show_mosaics;
+  $("opt-repair").checked = info.settings.star_repair;   // REQ-61: pre-set from the saved settings
+  $("opt-cutout").checked = info.settings.cutout;
   for (const name of [...info.archives, ...info.planned]) {
     const available = info.archives.includes(name);
     $("archive-boxes").append(el("label", { class: "check" + (available ? "" : " unavailable") },
@@ -106,13 +109,18 @@ function setTarget(t) {
     el("span", { class: "muted" }, `${t.object_type ? `(${t.object_type}) ` : ""}${fmt.deg(t.ra, t.dec)}${size}`),
     el("div", { class: "muted" }, `You typed “${t.query}”. Check this is the object you meant before searching.`));
   $("target").hidden = false;
+  $("opt-cutout-label").textContent = `Cut around the object (${cutoutBox(t).toFixed(1)}′ box)`;
 }
+
+// REQ-25/REQ-58: 2× the object's size, or the default box when the size is unknown.
+function cutoutBox(t) { return t.size_arcmin ? 2 * t.size_arcmin : state.info.settings.cutout_default_arcmin; }
 
 // ---------- search (S-07, S-32) ----------
 $("search").addEventListener("click", () => {
   const t = state.target; if (!t) return;
   stopSearch();
   state.selected.clear();
+  if (!downloading()) state.dl.clear();
   const checked = (sel) => [...document.querySelectorAll(sel)].filter((b) => b.checked).map((b) => b.value);
   const params = new URLSearchParams({
     ra: t.ra, dec: t.dec, matched_id: t.matched_id, query: t.query,
@@ -213,7 +221,7 @@ function renderProduct(p, grid) {
     onchange: (e) => { toggle(p, e.target.checked); } });
   const thumb = p.thumbnail_url
     ? el("img", { class: "thumb", src: p.thumbnail_url, loading: "lazy", alt: `${p.filter} preview` })
-    : el("div", { class: "thumb", title: "No preview yet; one is made after download." });
+    : el("div", { class: "thumb", "data-thumb-key": p.key, title: "No preview yet; one is made after download." });
   const centre = p.centre_ra != null && p.centre_dec != null
     ? el("div", {}, `${p.is_mosaic ? "Mosaic" : "Image"} centre: ${fmt.position(p.centre_ra, p.centre_dec)}` +
       (p.offset_arcmin != null ? ` · Object is ${fmt.offset(p.offset_arcmin)} from centre` : ""))
@@ -230,7 +238,7 @@ function renderProduct(p, grid) {
     el("td", {}, `${p.archive} · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null),
     el("td", {}, fmt.exp(p.exptime_s)),
     el("td", {}, p.pixel_scale_arcsec ? `${p.pixel_scale_arcsec}″` : "?"),
-    el("td", {}, fmt.size(p.size_bytes)),
+    el("td", {}, fmt.size(p.size_bytes), statusLine(p.key)),
     el("td", {}, p.obs_date || "?"),
     el("td", {}, more)), details];
 }
@@ -254,6 +262,7 @@ function updateSelection() {
   const items = [...state.selected.values()];
   const total = items.reduce((s, p) => s + (p.size_bytes || 0), 0);
   const limit = (state.info?.settings.size_warning_gb || 5) * 1e9;
+  $("download").disabled = !items.length || downloading();
   $("selection-summary").textContent = items.length
     ? `${items.length} image${items.length === 1 ? "" : "s"} selected, about ${fmt.size(total)} to download.` +
       (total > limit ? ` ⚠ Over your ${fmt.size(limit)} warning limit.` : "")
@@ -261,8 +270,130 @@ function updateSelection() {
   $("selection-summary").className = total > limit ? "warning" : "muted";
 }
 
+// ---------- download (S-07, S-26, REQ-61–63) ----------
+const downloading = () => !!state.job && !state.job.finished;
+
+const STATUS = {
+  queued: () => "Waiting",
+  downloading: (it) => it.total ? `Downloading ${Math.floor(100 * it.done / it.total)}%` : "Downloading…",
+  processing: (it) => it.message || "Processing…",
+  saved: (it) => "Saved ✓" + (it.message ? ` ⚠ ${it.message}` : ""),
+  skipped: () => "Already downloaded ✓",
+  failed: (it) => `Failed: ${it.message}`,
+  cancelled: () => "Cancelled",
+};
+
+function statusLine(key) {
+  const node = el("div", { class: "dl-status", "data-status-key": key });
+  const it = state.dl.get(key);
+  if (it) paintStatus(node, it);
+  return node;
+}
+
+function paintStatus(node, it) {
+  node.className = `dl-status ${it.state}`;
+  node.textContent = STATUS[it.state](it);
+  node.title = it.paths?.length ? it.paths.join("\n") : "";
+}
+
+function setsContaining(key) {
+  return state.sets.filter((s) => s.rows.some((r) => r.products.some((p) => p.key === key))).map((s) => s.name);
+}
+
+$("download").addEventListener("click", async () => {
+  const items = [...state.selected.values()];
+  if (!items.length || !state.target) return;
+  const total = items.reduce((s, p) => s + (p.size_bytes || 0), 0);
+  const limit = state.info.settings.size_warning_gb * 1e9;
+  if (total > limit && !confirm(`About ${fmt.size(total)} will be downloaded, over your ${fmt.size(limit)} warning limit. Continue?`)) return;
+
+  const body = {
+    target: state.target, star_repair: $("opt-repair").checked, cutout: $("opt-cutout").checked,
+    items: items.map((p) => ({ key: p.key, sets: setsContaining(p.key) })),
+  };
+  $("download").disabled = true;
+  $("download-summary").hidden = true;
+  let snap;
+  try {
+    const r = await fetch("/api/download", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    snap = await r.json();
+    if (!r.ok) throw new Error(snap.detail || "The download couldn't start.");
+  } catch (err) {
+    showDownloadSummary(err.message, false);
+    updateSelection();
+    return;
+  }
+  state.dl.clear();
+  showProgress(snap);
+  $("download-cancel").hidden = false;
+  $("download-progress").hidden = false;
+  const src = new EventSource(`/api/download/${snap.id}/events`);
+  state.jobSource = src;
+  src.addEventListener("progress", (e) => showProgress(JSON.parse(e.data)));
+  src.addEventListener("end", (e) => finishDownload(JSON.parse(e.data)));
+  src.onerror = () => { if (state.jobSource) finishDownload(null, "The connection to FITS-fetcher was lost."); };
+});
+
+$("download-cancel").addEventListener("click", async () => {
+  if (!state.job) return;
+  $("download-cancel").disabled = true;
+  $("overall-text").textContent = "Cancelling…";
+  try { await fetch(`/api/download/${state.job.id}/cancel`, { method: "POST" }); } catch (_) { /* reported by the stream */ }
+});
+
+$("open-folder").addEventListener("click", async () => {
+  if (!state.job) return;
+  const r = await fetch(`/api/download/${state.job.id}/open`, { method: "POST" });
+  if (!r.ok) $("download-summary-text").textContent = (await r.json()).detail;
+});
+
+function showProgress(snap) {
+  state.job = snap;
+  for (const it of snap.items) {
+    const before = state.dl.get(it.key);
+    state.dl.set(it.key, it);
+    for (const node of document.querySelectorAll(`[data-status-key="${CSS.escape(it.key)}"]`)) paintStatus(node, it);
+    if ((it.state === "saved" || it.state === "skipped") && before?.state !== it.state) showThumbnail(snap.id, it.key);
+  }
+  const c = snap.counts, n = snap.items.length;
+  const left = n - c.saved - c.skipped - c.failed - c.cancelled;
+  $("overall").value = snap.bytes_total ? snap.bytes_done / snap.bytes_total : (n - left) / n;
+  if (!snap.cancelled) $("overall-text").textContent =
+    `${n - left} of ${n} done · ${fmt.size(snap.bytes_done)} of about ${fmt.size(snap.bytes_total)}`;
+}
+
+// REQ-27: images without an archive preview get one made from the saved file.
+function showThumbnail(jobId, key) {
+  for (const ph of document.querySelectorAll(`div[data-thumb-key="${CSS.escape(key)}"]`)) {
+    ph.replaceWith(el("img", { class: "thumb", src: `/api/download/${jobId}/thumb?key=${encodeURIComponent(key)}`,
+      alt: "Preview made from the downloaded image" }));
+  }
+}
+
+function finishDownload(snap, error) {
+  if (state.jobSource) { state.jobSource.close(); state.jobSource = null; }
+  if (snap) showProgress(snap);
+  if (state.job) state.job.finished = true;
+  $("download-cancel").hidden = true;
+  $("download-cancel").disabled = false;
+  $("download-progress").hidden = true;
+  updateSelection();
+  if (error) { showDownloadSummary(error, false); return; }
+  const c = snap.counts;
+  const parts = [`${c.saved} saved`, `${c.skipped} already downloaded`, `${c.failed} failed`];
+  if (c.cancelled) parts.push(`${c.cancelled} cancelled`);
+  showDownloadSummary(`${parts.join(", ")}. Folder: ${snap.object_dir}`, c.saved + c.skipped > 0);
+}
+
+function showDownloadSummary(text, canOpen) {
+  $("download-summary-text").textContent = text;
+  $("open-folder").hidden = !canOpen;
+  $("download-summary").hidden = false;
+}
+
 // ---------- quit (S-36) ----------
 $("quit").addEventListener("click", async () => {
+  if (downloading() && !confirm("A download is still running. Quit anyway?")) return;
   stopSearch();
   try { await fetch("/api/quit", { method: "POST" }); } catch (_) { /* server already gone */ }
   document.body.replaceChildren(el("main", {}, el("section", { class: "panel" },
