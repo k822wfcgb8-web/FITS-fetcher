@@ -45,3 +45,60 @@ Results of checking the spec's *(verify)* items against the live archives. Libra
 - Useful extra columns: `filter`, `access_estsize`, `abmaglim` (depth), `multi_ob`/`n_obs`.
 
 **CADC: still unreachable**, also from outside Claude Code's sandbox (`ws-cadc.canfar.net` port 443 times out after 20 s). So the problem is on CADC's side or between this network and CADC, not a local restriction. **To retry on another day;** if it persists, look for CADC's current service address in their documentation.
+
+## 04 — Candidate list for ambiguous names (REQ-18) (`04_name_candidates.py`)
+
+**Works via SIMBAD TAP**, searching SIMBAD's `NAME …` identifiers with a **starts-with** match:
+- "Crab" → M 1 (SNR) and the Crab Pulsar; "Eagle" → M 16 and an unrelated supernova; "Orion" → 20 candidates (M 42, Orion A/B clouds, Orion Dwarf Galaxy…). Each query took 0.1–0.4 s.
+- **Contains-anywhere matching is unusable**: `lowercase(id) LIKE '%crab%'` ran over 10 minutes. SIMBAD's ADQL has `lowercase()` but no `LOWER`, `UPPER` or `ILIKE`.
+- SIMBAD's case-sensitive matching needs the term as typed **and** in Title Case. Combining the two with `OR` in one query took 105 s, so send **one query per variant** and merge the results.
+- Several identifiers can point at the same object (M 1 ← "Crab", "Crab Nebula"), so **deduplicate by `main_id`**. Some candidates (Orion Arm, Orion Belt) have **no coordinates** and must be dropped.
+- Catalogue designations (M51, NGC 5194) should go straight to Sesame (`from_name`), as in step 01. The candidate list is for common names.
+
+## 05/06 — Pan-STARRS encoding (REQ-36) (`05_panstarrs_encoding.py`, `06_panstarrs_formula.py`)
+
+**Confirmed:** full PS1 stack files (`*.stk.<band>.unconv.fits`, about 68 MB, 6307×6289) are **Rice tile-compressed 16-bit integers** in extension 1, asinh-encoded with `BOFFSET` and `BSOFTEN`. The linearisation
+
+    flux = BOFFSET + BSOFTEN * 2 * sinh(x / (2.5 / ln 10))     (x after BSCALE/BZERO)
+
+matches the PS1 cutout service's linear output to within 1 part in 10⁶ over 57,600 pixels.
+- The PS1 **cutout service** (`fitscut.cgi`) already returns linear 32-bit float; no conversion is needed for cutouts.
+- Blank pixels are NaN after decoding (70,296 of 39.7 M in the M51 r stack).
+- Weight (`.wt`) and mask (`.mask`) are **separate files**, not extensions, so REQ-32 is satisfied by not downloading them.
+- MAST's PS1 product list includes **`.cmf` source catalogues labelled `SCIENCE`**; select PS1 images by filename pattern (`.stk.<band>.unconv.fits`).
+- PS1 headers use the **old `PC001001`-style WCS keywords** (astropy warns). Rewrite them in the modern form before saving so PixInsight/Siril read the WCS reliably (REQ-49).
+
+## 07 — Science extension and DQ arrays in combined products (`07_hdu_structure.py`)
+
+Read with HTTP range requests (headers only); **MAST supports partial reads**.
+
+| Product | Science HDU | Other HDUs | DQ array? |
+|---|---|---|---|
+| HST ACS/WFC, WFC3/UVIS `_drc`; WFC3/IR `_drz` | `SCI` [1], e⁻/s | WHT, CTX, HDRTAB | **No** |
+| JWST NIRCam / MIRI `_i2d` | `SCI` [1], MJy/sr | ERR, CON, WHT, VAR_POISSON, VAR_RNOISE, VAR_FLAT, HDRTAB, ASDF | **No** |
+| PS1 stack | ext [1] (compressed) | (separate wt/mask files) | Separate mask file |
+
+- **REQ-37's data-quality "saturated" check has nothing to read** in HST/JWST combined products: they carry no DQ array. Only the NaN/zero rule applies to them.
+- The science array is a fraction of the file: an HST `_drc` is about 215 MB for a 4k×4k image (SCI is about a third), and a JWST NIRCam `_i2d` is about 301 MB (SCI is about a seventh). Because MAST allows partial reads, the app could fetch **only the `SCI` extension**.
+
+## 08 — IRSA pipeline products (REQ-56) (`08_irsa_products.py`)
+
+- Each SIA row is **one file**, labelled `dataproduct_subtype` = `science` / `noise` / `weight` / `auxiliary`. Select `science` only (REQ-32). Science rows give a **direct FITS URL** (no DataLink step for these collections).
+- `spitzer_seip`: IRAC1–4, MIPS24 mosaics, single HDU, `BITPIX=-32`, MJy/sr. Several mosaics per band for M51 (REQ-53 applies).
+- `wise_allwise`: W1–W4 atlas tiles 4095×4095, single HDU, float, **DN** with `MAGZP`.
+- `twomass_allsky`: J/H/K atlas images 512×1024, float, `MAGZP`, **delivered gzipped** (`.fits.gz`) → decompress during extraction (REQ-46). Labelled `calib_level` 2 although they are co-adds (see step 02).
+- Single-HDU products need no extension selection; WCS uses `RA---TAN` (Spitzer) or `RA---SIN` (WISE, 2MASS).
+
+## 09 — Thumbnail sources (REQ-27) (`09_thumbnails.py`)
+
+- **MAST:** archive preview JPEGs exist (`jpegURL` column, `_drc.jpg`), but can be large (1.2 MB for one ACS image).
+- **IRSA:** the IBE service cuts a small FITS piece from any science file (`?center=ra,dec&size=200pix`, about 130 KB, gzipped). Render to PNG for display.
+- **CDS hips2fits:** returns 200×200 JPEGs (5–10 KB) for HST, AllWISE, 2MASS and Pan-STARRS HiPS surveys. These show the **survey**, not the exact archive file, so they're suitable only as a fallback.
+- **ESO:** not checked yet.
+- **PS1:** the cutout service (step 05) can also make thumbnails.
+
+## Not yet verified
+- **siril-cli** (REQ-50): Siril is not installed on this Mac.
+- **CADC** collection list and mirrors (REQ-21/35): service unreachable (step 03).
+- **KiDS** coadds at ESO for optical coverage; ESO thumbnails.
+- **Licence compatibility** (REQ-34) of dependencies.
