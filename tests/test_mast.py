@@ -12,9 +12,10 @@ MISSES = "POLYGON 203.37 47.10 203.57 47.10 203.57 47.30 203.37 47.30"
 
 def obs_table(rows):
     cols = ["obs_collection", "instrument_name", "filters", "obs_id", "s_region", "em_min", "em_max",
-            "t_min", "t_exptime", "jpegURL"]
+            "t_min", "t_exptime", "jpegURL", "s_ra", "s_dec"]
     return Table(rows=[[r.get(c, d) for c, d in zip(cols, ["HST", "ACS/WFC", "F814W", "x", COVERS, 700.0, 900.0,
-                                                            58000.0, 1000.0, ""])] for r in rows], names=cols)
+                                                            58000.0, 1000.0, "", 202.47, 47.20])] for r in rows],
+                 names=cols)
 
 
 @pytest.fixture
@@ -65,6 +66,13 @@ def test_search_applies_selection_rules(fake_mast):
     jwst = next(p for p in found if p.collection == "JWST")
     assert jwst.filter == "F405N" and jwst.band_type == "narrow" and jwst.pixel_scale_arcsec == 0.063
     assert all(p.size_bytes for p in found)
+
+
+def test_image_centre_and_offset(fake_mast):
+    fake_mast([{"obs_id": "hst_1_01_acs_wfc_f814w_j1", "s_ra": M51.ra, "s_dec": M51.dec + 0.05}])
+    p = mast.MastArchive(Settings()).search(M51, 0.02)[0]
+    assert (p.centre_ra, p.centre_dec) == (M51.ra, M51.dec + 0.05)
+    assert p.offset_arcmin == pytest.approx(3.0)
 
 
 def test_mosaics_when_switched_on(fake_mast):

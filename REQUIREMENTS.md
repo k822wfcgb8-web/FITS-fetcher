@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.4 (approved)
+**Version:** 1.5 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -143,6 +143,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 
 ### 7.3 Result metadata to display (suggested)
 - **S-21** ✏️ For each result, the **main row** shows: filter, central wavelength, broadband/narrowband flag, archive + instrument, exposure time, pixel scale, estimated download size. A **click-to-expand details view** shows: telescope, bandwidth, observation date, image dimensions, sky coverage of the object, data product level. *(modified at review)*
+- **REQ-59:** *(Resolved Q-39)* The details view also shows the **image centre** as the archive reports it, in decimal degrees and sexagesimal (e.g. `RA 202.46741° (13h 29m 52.18s), Dec +47.19999° (+47° 12′ 00.0″)`), and **how far the object lies from that centre** (″ under 1′, otherwise ′). For an HST mosaic it is labelled *mosaic centre*, because the delivered file is cut around the object.
 
 ---
 
@@ -271,6 +272,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-36~~ | Partial downloads: **resolved → science extension only where supported (REQ-57)** | — |
 | ~~Q-38~~ | HST product families: **resolved → HAP single-visit by default, switch to add mosaics cut around the object, no classic pipeline (REQ-58)** | — |
 | ~~Q-37~~ | Siril test (REQ-50): **resolved → Siril 1.4.4 installed, `siril-cli` scripting confirmed** | — |
+| ~~Q-39~~ | Exact position in the details view: **resolved → image centre in degrees and sexagesimal, plus the object's offset from it (REQ-59)** | — |
 
 ---
 
@@ -293,3 +295,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.2 | 2026-10-10 | Renamed to `REQUIREMENTS.md`. Added and resolved Q-30–Q-32: colour set definition (REQ-52), several products per filter (REQ-53), re-processing when settings change (REQ-54). Added and resolved Q-33: Hubble data from the `HST` collection only (REQ-55). Added and resolved Q-34: IRSA pipeline collections only (REQ-56). |
 | 1.3 | 2026-10-10 | After verification steps 01–09: REQ-37 revised (NaN/zero only, Q-35); REQ-57 added (science-extension-only downloads, Q-36); REQ-23 note added; Q-37 opened and resolved (Siril installed, `siril-cli` scriptable). REQ-36 formula confirmed. |
 | 1.4 | 2026-10-10 | Added and resolved Q-38: HST product families (REQ-58). |
+| 1.5 | 2026-10-10 | Added and resolved Q-39: image centre and object offset in the details view (REQ-59). |

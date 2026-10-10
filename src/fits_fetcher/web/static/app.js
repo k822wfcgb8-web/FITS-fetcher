@@ -26,6 +26,25 @@ const fmt = {
   um(v) { return v == null ? "?" : v < 1 ? `${Math.round(v * 1000)} nm` : `${+v.toFixed(2)} µm`; },
   exp(s) { return s == null ? "?" : s >= 3600 ? `${(s / 3600).toFixed(1)} h` : `${Math.round(s)} s`; },
   deg(ra, dec) { return `RA ${ra.toFixed(5)}°, Dec ${dec >= 0 ? "+" : ""}${dec.toFixed(5)}°`; },
+  // Sexagesimal parts, rounded once at the last digit so 59.995 s carries into the minutes.
+  sexa(v, unitsPerDeg, digits) {
+    const scale = 10 ** digits;
+    let t = Math.round(Math.abs(v) * unitsPerDeg * 3600 * scale);
+    const frac = t % (60 * scale); t = (t - frac) / (60 * scale);
+    return [Math.floor(t / 60), t % 60, (frac / scale).toFixed(digits).padStart(3 + digits, "0")];
+  },
+  hms(ra) {
+    const [h, m, s] = fmt.sexa(((ra % 360) + 360) % 360, 1 / 15, 2);
+    return `${String(h % 24).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${s}s`;
+  },
+  dms(dec) {
+    const [d, m, s] = fmt.sexa(dec, 1, 1);
+    return `${dec < 0 ? "-" : "+"}${String(d).padStart(2, "0")}° ${String(m).padStart(2, "0")}′ ${s}″`;
+  },
+  position(ra, dec) {
+    return `RA ${ra.toFixed(5)}° (${fmt.hms(ra)}), Dec ${dec >= 0 ? "+" : ""}${dec.toFixed(5)}° (${fmt.dms(dec)})`;
+  },
+  offset(arcmin) { return arcmin < 1 ? `${(arcmin * 60).toFixed(1)}″` : `${arcmin.toFixed(2)}′`; },
 };
 
 // ---------- startup ----------
@@ -182,9 +201,13 @@ function renderProduct(p) {
   const thumb = p.thumbnail_url
     ? el("img", { class: "thumb", src: p.thumbnail_url, loading: "lazy", alt: `${p.filter} preview` })
     : el("div", { class: "thumb", title: "No preview yet; one is made after download." });
+  const centre = p.centre_ra != null && p.centre_dec != null
+    ? el("div", {}, `${p.is_mosaic ? "Mosaic" : "Image"} centre: ${fmt.position(p.centre_ra, p.centre_dec)}` +
+      (p.offset_arcmin != null ? ` · Object is ${fmt.offset(p.offset_arcmin)} from centre` : ""))
+    : null;
   const details = el("tr", { hidden: true }, el("td", {}), el("td", { class: "details-cell", colspan: 8 },
     `Telescope: ${p.telescope} · Bandwidth: ${fmt.um(p.bandwidth_um)} · Product: ${p.product_level} · ` +
-    `Observation: ${p.obs_id}${p.is_mosaic ? " · Cut around the object from a multi-visit mosaic" : ""}`));
+    `Observation: ${p.obs_id}${p.is_mosaic ? " · Cut around the object from a multi-visit mosaic" : ""}`, centre));
   const more = el("button", { type: "button", class: "secondary", onclick: () => { details.hidden = !details.hidden; } }, "Details");
   return [el("tr", {},
     el("td", {}, box), el("td", {}, thumb),

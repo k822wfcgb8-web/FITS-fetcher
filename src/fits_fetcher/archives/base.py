@@ -44,6 +44,9 @@ class Product:
     thumbnail_url: str = ""
     science_extension: str | int = 0    # which HDU holds the science image (S-23)
     is_mosaic: bool = False             # HST multi-visit mosaic, delivered cut around the object (REQ-58)
+    centre_ra: float | None = None      # image centre as the archive reports it, degrees (REQ-59)
+    centre_dec: float | None = None
+    offset_arcmin: float | None = None  # how far the object lies from that centre
 
     @property
     def key(self) -> str:

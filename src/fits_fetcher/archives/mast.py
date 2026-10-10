@@ -148,6 +148,9 @@ class MastArchive(Archive):
         url = file_url(coll, inst, obs_id)
         mosaic = coll == "HST" and hst_family(obs_id) == "mosaic"
         scale = MOSAIC_PIXEL_SCALE if mosaic else _pixel_scale(inst, wl)
+        c_ra, c_dec = _float(o["s_ra"]), _float(o["s_dec"])
+        offset = (footprint.angular_sep_deg(c_ra, c_dec, target.ra, target.dec) * 60
+                  if c_ra is not None and c_dec is not None else None)
 
         # Download estimates (S-26) for the science array only (REQ-57), as float32.
         if mosaic:  # only the rows of the box around the object, each a full skycell row
@@ -166,5 +169,6 @@ class MastArchive(Archive):
             wavelength_um=wl, bandwidth_um=(hi - lo) / 1000 if lo and hi else None, band_type=band,
             exptime_s=_float(o["t_exptime"]), obs_date=Time(t_min, format="mjd").isot[:10] if t_min else "",
             pixel_scale_arcsec=scale, size_bytes=size, is_mosaic=mosaic, product_level=level,
+            centre_ra=c_ra, centre_dec=c_dec, offset_arcmin=offset,
             thumbnail_url=_http(_text(o["jpegURL"])), science_extension=1 if coll == "PS1" else "SCI",
         )

@@ -22,7 +22,7 @@ def _shapes(s_region: str) -> list[tuple[str, list[float]]]:
     return shapes
 
 
-def _angular_sep_deg(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
+def angular_sep_deg(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
     r1, d1, r2, d2 = map(math.radians, (ra1, dec1, ra2, dec2))
     s = math.sin((d2 - d1) / 2) ** 2 + math.cos(d1) * math.cos(d2) * math.sin((r2 - r1) / 2) ** 2
     return math.degrees(2 * math.asin(min(1.0, math.sqrt(s))))
@@ -56,7 +56,7 @@ def contains(s_region: str, ra: float, dec: float) -> bool:
     """True if any shape in `s_region` contains the point. Unparseable regions return False."""
     for kind, nums in _shapes(s_region):
         if kind == "CIRCLE" and len(nums) >= 3:
-            if _angular_sep_deg(nums[0], nums[1], ra, dec) <= nums[2]:
+            if angular_sep_deg(nums[0], nums[1], ra, dec) <= nums[2]:
                 return True
         elif kind == "BOX" and len(nums) >= 4:
             # BOX ra dec width height, axis-aligned on the tangent plane at its centre
