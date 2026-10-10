@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.5 (approved)
+**Version:** 1.6 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -144,6 +144,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 ### 7.3 Result metadata to display (suggested)
 - **S-21** ✏️ For each result, the **main row** shows: filter, central wavelength, broadband/narrowband flag, archive + instrument, exposure time, pixel scale, estimated download size. A **click-to-expand details view** shows: telescope, bandwidth, observation date, image dimensions, sky coverage of the object, data product level. *(modified at review)*
 - **REQ-59:** *(Resolved Q-39)* The details view also shows the **image centre** as the archive reports it, in decimal degrees and sexagesimal (e.g. `RA 202.46741° (13h 29m 52.18s), Dec +47.19999° (+47° 12′ 00.0″)`), and **how far the object lies from that centre** (″ under 1′, otherwise ′). For an HST mosaic it is labelled *mosaic centre*, because the delivered file is cut around the object.
+- **REQ-60:** *(Resolved Q-40)* Within a colour set, images in **two or more filters that share one pixel grid** are marked as a matched group, so the user can see without opening the details which images stack pixel-for-pixel with no registration (PixInsight, Siril). Each group gets a letter and colour (*Grid A*, *Grid B* …): a coloured bar on the row's left edge, a chip under the filter name, and a legend line under the set name listing its filters, with a **Select** button that ticks the whole group. Only grids confirmed in verification step 12 are marked: HST single-visit images from the same visit and detector, HST mosaics from the same skycell, and Pan-STARRS stacks from the same skycell. JWST and different-visit images are not marked, since they need registration.
 
 ---
 
@@ -273,6 +274,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-38~~ | HST product families: **resolved → HAP single-visit by default, switch to add mosaics cut around the object, no classic pipeline (REQ-58)** | — |
 | ~~Q-37~~ | Siril test (REQ-50): **resolved → Siril 1.4.4 installed, `siril-cli` scripting confirmed** | — |
 | ~~Q-39~~ | Exact position in the details view: **resolved → image centre in degrees and sexagesimal, plus the object's offset from it (REQ-59)** | — |
+| ~~Q-40~~ | Marking images that can be superimposed: **resolved → same pixel grid only (HST same visit, HST mosaic skycell, PS1 skycell), coloured edge + chip + legend with a Select button (REQ-60)** | — |
 
 ---
 
@@ -296,3 +298,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.3 | 2026-10-10 | After verification steps 01–09: REQ-37 revised (NaN/zero only, Q-35); REQ-57 added (science-extension-only downloads, Q-36); REQ-23 note added; Q-37 opened and resolved (Siril installed, `siril-cli` scriptable). REQ-36 formula confirmed. |
 | 1.4 | 2026-10-10 | Added and resolved Q-38: HST product families (REQ-58). |
 | 1.5 | 2026-10-10 | Added and resolved Q-39: image centre and object offset in the details view (REQ-59). |
+| 1.6 | 2026-10-10 | Added and resolved Q-40: matched-grid marking (REQ-60), after verification step 12. |

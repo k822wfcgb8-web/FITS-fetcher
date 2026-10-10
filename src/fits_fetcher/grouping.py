@@ -4,6 +4,7 @@
   all instruments and archives form one set.
 - Several products in one filter are listed together and count once (REQ-53, S-16).
 - A set is shown only with at least `min_filters` distinct filters (REQ-07, REQ-10).
+- Images on one pixel grid in two or more filters are marked as a matched group (REQ-60).
 """
 from __future__ import annotations
 
@@ -28,11 +29,24 @@ class FilterRow:
 
 
 @dataclass
+class GridGroup:
+    """Images in different filters that share one pixel grid and stack without registration (REQ-60)."""
+    label: str                # "A", "B", …
+    grid: str                 # e.g. "HST visit 17500_06 WFC3/UVIS"
+    products: list[Product]
+
+    def to_dict(self) -> dict:
+        return {"label": self.label, "grid": self.grid, "filters": [p.filter for p in self.products],
+                "product_keys": [p.key for p in self.products]}
+
+
+@dataclass
 class ColourSet:
     name: str
     instruments: list[str]
     rows: list[FilterRow]
     warnings: list[str] = field(default_factory=list)
+    grids: list[GridGroup] = field(default_factory=list)
 
     @property
     def readiness(self) -> str:
@@ -50,7 +64,25 @@ class ColourSet:
 
     def to_dict(self) -> dict:
         return {"name": self.name, "instruments": self.instruments, "readiness": self.readiness,
-                "warnings": self.warnings, "rows": [r.to_dict() for r in self.rows]}
+                "warnings": self.warnings, "rows": [r.to_dict() for r in self.rows],
+                "grids": [g.to_dict() for g in self.grids]}
+
+
+def _grid_groups(rows: list[FilterRow]) -> list[GridGroup]:
+    """Grids used in at least two filters; most filters first, then deepest."""
+    by_grid: dict[str, list[Product]] = defaultdict(list)
+    for r in rows:  # rows are in wavelength order, so each group's filters are too
+        for p in r.products:
+            if p.grid:
+                by_grid[p.grid].append(p)
+    matched = [ps for ps in by_grid.values() if len({p.filter for p in ps}) >= 2]
+    matched.sort(key=lambda ps: (-len({p.filter for p in ps}), -sum(p.exptime_s or 0 for p in ps)))
+    return [GridGroup(_label(i), ps[0].grid, ps) for i, ps in enumerate(matched)]
+
+
+def _label(i: int) -> str:
+    """A … Z, then AA, AB …"""
+    return chr(65 + i) if i < 26 else _label(i // 26 - 1) + chr(65 + i % 26)
 
 
 def _set_name(instruments: list[str], rows: list[FilterRow]) -> str:
@@ -91,7 +123,7 @@ def build_sets(products: list[Product], *, min_filters: int = 3, mix_instruments
             r.products.sort(key=lambda p: p.obs_date, reverse=True)
             r.products.sort(key=lambda p: p.exptime_s or 0, reverse=True)
         instruments = sorted({f"{p.instrument}" for p in members})
-        cs = ColourSet(_set_name(instruments, rows), instruments, rows)
+        cs = ColourSet(_set_name(instruments, rows), instruments, rows, grids=_grid_groups(rows))
         if mix_instruments:
             scales = [p.pixel_scale_arcsec for p in members if p.pixel_scale_arcsec]
             if scales and max(scales) / min(scales) > pixel_scale_warn_ratio:  # REQ-26: warn, don't block

@@ -68,6 +68,18 @@ def test_search_applies_selection_rules(fake_mast):
     assert all(p.size_bytes for p in found)
 
 
+@pytest.mark.parametrize("coll, filt, obs_id, grid", [
+    ("HST", "F502N", "hst_17500_06_wfc3_uvis_f502n_if8506", "HST visit 17500_06 WFC3/UVIS"),
+    ("HST", "F631N", "hst_17500_06_wfc3_uvis_f631n_if8506", "HST visit 17500_06 WFC3/UVIS"),
+    ("HST", "F814W", "hst_skycell-p2261x11y16_acs_wfc_f814w_all", "HST skycell p2261x11y16"),
+    ("PS1", "r", "rings.v3.skycell.2261.075.stk.r", "PS1 skycell 2261.075"),
+    ("JWST", "F444W", "jw1-o1_t1_nircam_f444w", ""),
+    ("HST", "F814W", "jd8f17020", ""),
+])
+def test_grid_key(coll, filt, obs_id, grid):
+    assert mast.grid_key(coll, filt, obs_id) == grid
+
+
 def test_image_centre_and_offset(fake_mast):
     fake_mast([{"obs_id": "hst_1_01_acs_wfc_f814w_j1", "s_ra": M51.ra, "s_dec": M51.dec + 0.05}])
     p = mast.MastArchive(Settings()).search(M51, 0.02)[0]

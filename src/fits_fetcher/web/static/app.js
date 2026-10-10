@@ -174,28 +174,41 @@ function showSets(data) {
   updateSelection();
 }
 
+// Matched grid groups (REQ-60) cycle through the --grid-N colours in style.css.
+const GRID_COLOURS = 6;
+const gridStyle = (i) => `--gc: var(--grid-${i % GRID_COLOURS})`;
+
 function renderSet(set) {
   const allBtn = el("button", { type: "button", class: "secondary", onclick: (e) => { e.preventDefault(); selectWholeSet(set); } },
     "Select deepest in every filter");
+  const gridOf = new Map();
+  set.grids.forEach((g, i) => { for (const k of g.product_keys) gridOf.set(k, { ...g, i }); });
+  const legend = set.grids.length ? el("div", { class: "grids" }, set.grids.map((g, i) =>
+    el("div", { class: "grid-line", style: gridStyle(i) },
+      el("span", { class: "chip grid" }, `Grid ${g.label}`),
+      el("span", {}, `${g.filters.join(", ")} · ${g.grid} · same pixel grid, stacks without registration`),
+      el("button", { type: "button", class: "secondary small", onclick: () => selectGrid(set, g) }, "Select")))) : null;
   const body = el("tbody");
   for (const row of set.rows) {
     const line = row.line ? ` · ${row.line}` : "";
     body.append(el("tr", { class: "filter-row" },
       el("td", { colspan: 9 }, `${row.filter} — ${fmt.um(row.wavelength_um)} · ${row.band_type}band${line}`,
         el("span", { class: "muted" }, `  (${row.products.length} image${row.products.length === 1 ? "" : "s"})`))));
-    for (const p of row.products) body.append(...renderProduct(p));
+    for (const p of row.products) body.append(...renderProduct(p, gridOf.get(p.key)));
   }
   return el("details", { class: "set", open: true },
     el("summary", {}, el("span", { class: "set-name" }, set.name.replaceAll("_", " · ")),
       el("span", { class: "muted" }, set.readiness), allBtn),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
+    legend,
     el("div", { class: "table-wrap" }, el("table", {},
       el("thead", {}, el("tr", {}, ["", "Preview", "Filter", "Archive / instrument", "Exposure", "Pixel scale", "Download", "Date", ""]
         .map((h) => el("th", {}, h)))),
       body)));
 }
 
-function renderProduct(p) {
+function renderProduct(p, grid) {
+  const mark = grid ? { class: "on-grid", style: gridStyle(grid.i) } : {};
   const box = el("input", { type: "checkbox", "data-key": p.key, checked: state.selected.has(p.key),
     onchange: (e) => { toggle(p, e.target.checked); } });
   const thumb = p.thumbnail_url
@@ -205,13 +218,15 @@ function renderProduct(p) {
     ? el("div", {}, `${p.is_mosaic ? "Mosaic" : "Image"} centre: ${fmt.position(p.centre_ra, p.centre_dec)}` +
       (p.offset_arcmin != null ? ` · Object is ${fmt.offset(p.offset_arcmin)} from centre` : ""))
     : null;
-  const details = el("tr", { hidden: true }, el("td", {}), el("td", { class: "details-cell", colspan: 8 },
+  const details = el("tr", { ...mark, hidden: true }, el("td", {}), el("td", { class: "details-cell", colspan: 8 },
     `Telescope: ${p.telescope} · Bandwidth: ${fmt.um(p.bandwidth_um)} · Product: ${p.product_level} · ` +
     `Observation: ${p.obs_id}${p.is_mosaic ? " · Cut around the object from a multi-visit mosaic" : ""}`, centre));
   const more = el("button", { type: "button", class: "secondary", onclick: () => { details.hidden = !details.hidden; } }, "Details");
-  return [el("tr", {},
+  return [el("tr", mark,
     el("td", {}, box), el("td", {}, thumb),
-    el("td", {}, p.filter, " ", el("span", { class: "chip" }, p.band_type)),
+    el("td", {}, p.filter, " ", el("span", { class: "chip" }, p.band_type),
+      grid ? el("div", {}, el("span", { class: "chip grid", title: `Same pixel grid as the other Grid ${grid.label} images` },
+        `Grid ${grid.label}`)) : null),
     el("td", {}, `${p.archive} · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null),
     el("td", {}, fmt.exp(p.exptime_s)),
     el("td", {}, p.pixel_scale_arcsec ? `${p.pixel_scale_arcsec}″` : "?"),
@@ -228,6 +243,11 @@ function toggle(p, on) {
 
 function selectWholeSet(set) {
   for (const row of set.rows) if (row.products.length) toggle(row.products[0], true);  // deepest first (REQ-53)
+}
+
+function selectGrid(set, grid) {
+  const keys = new Set(grid.product_keys);
+  for (const row of set.rows) for (const p of row.products) if (keys.has(p.key)) toggle(p, true);
 }
 
 function updateSelection() {

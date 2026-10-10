@@ -10,6 +10,8 @@
   --warn: #8a5a00;
   --ok: #1e7b3a;
   --chip: #eef1f6;
+  /* matched grid groups (REQ-60); white text on these is at least 4.5:1 */
+  --grid-0: #1b7a43; --grid-1: #2b62c0; --grid-2: #7a43c0; --grid-3: #a8560c; --grid-4: #0f7576; --grid-5: #ad3479;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -24,6 +26,7 @@
     --warn: #e5b45c;
     --ok: #7fd18f;
     --chip: #252b36;
+    --grid-0: #5fcf8a; --grid-1: #6ea1ff; --grid-2: #b48cff; --grid-3: #f0a05a; --grid-4: #4fd0cf; --grid-5: #f07ab8;
   }
 }
 * { box-sizing: border-box; }
@@ -66,6 +69,12 @@ tr.filter-row td { background: var(--chip); font-weight: 600; }
 .chip { display: inline-block; padding: 1px 7px; border-radius: 10px; background: var(--chip); font-size: 12px; color: var(--muted); }
 .thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; background: var(--chip); display: block; }
 .details-cell { color: var(--muted); font-size: 12px; }
+.grids { display: grid; gap: 6px; margin: 0 12px 10px; font-size: 13px; }
+.grid-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chip.grid { background: var(--gc); color: var(--panel); font-weight: 600; margin-top: 3px; }
+.grid-line .chip.grid { margin-top: 0; }
+tr.on-grid > td:first-child { box-shadow: inset 4px 0 0 var(--gc); }
+button.small { padding: 2px 10px; font-size: 12px; }
 .download-bar { justify-content: space-between; align-items: center; margin-top: 12px; }
 .table-wrap { overflow-x: auto; }
 @media (max-width: 640px) {

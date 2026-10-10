@@ -47,6 +47,7 @@ class Product:
     centre_ra: float | None = None      # image centre as the archive reports it, degrees (REQ-59)
     centre_dec: float | None = None
     offset_arcmin: float | None = None  # how far the object lies from that centre
+    grid: str = ""                      # images with the same grid stack pixel-for-pixel (REQ-60); "" = unknown
 
     @property
     def key(self) -> str:

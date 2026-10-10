@@ -45,3 +45,18 @@ def test_band_type_and_line_filters(product):
 def test_readiness_summary(product):
     acs = build_sets(acs_and_ps1(product) + [product("F656N")], min_filters=3)[0]
     assert acs.readiness.startswith("3 broadband (F435W, F555W, F814W) + 2 narrowband (F656N Hα")
+
+
+def test_grid_groups_mark_images_sharing_a_grid_in_two_or_more_filters(product):
+    # M1 WFC3/UVIS narrowband (verification step 12): visits 06 and 04 each cover three filters, 08 only one.
+    v6, v4, v8 = "HST visit 17500_06 WFC3/UVIS", "HST visit 17500_04 WFC3/UVIS", "HST visit 17500_08 WFC3/UVIS"
+    uvis = lambda f, grid, exp: product(f, "WFC3/UVIS", obs_id=f"{grid}-{f}", exptime=exp, grid=grid)
+    sets = build_sets([uvis("F487N", v8, 7808),
+                       uvis("F502N", v6, 2460), uvis("F631N", v6, 3888), uvis("F673N", v6, 3888),
+                       uvis("F502N", v4, 2460), uvis("F631N", v4, 3888), uvis("F673N", v4, 4000),
+                       uvis("F656N", "", 9999)], min_filters=3)
+    grids = sets[0].grids
+    assert [(g.label, g.grid) for g in grids] == [("A", v4), ("B", v6)]  # same filter count, deeper first
+    assert [p.filter for p in grids[0].products] == ["F502N", "F631N", "F673N"]
+    assert all(v8 not in g.grid for g in grids)  # one filter only: no group
+    assert sets[0].to_dict()["grids"][1]["product_keys"] == [p.key for p in grids[1].products]

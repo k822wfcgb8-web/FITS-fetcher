@@ -129,3 +129,13 @@ This supports REQ-46 (no compression) and REQ-47 (no scaling) as written. The `s
 
   Building them directly cut the search to under a second. `tests/test_network.py` re-checks one file of each kind.
 - **JWST NIRCam `_i2d` files** can be large mosaics (2.4 GB for one F164N product), which makes REQ-57's science-only download important.
+
+## 12 — Images that share one pixel grid (REQ-60) (`12_shared_grids.py`)
+
+Science-extension headers only, read over HTTP on 2026-10-10.
+
+- **HST single-visit (HAP) images from the same visit share one grid**, whatever the filter. M1, WFC3/UVIS, proposal 17500: F502N, F631N and F673N of visit 06 have identical `NAXIS`, `CRVAL`, `CRPIX` and `CD` (6116 × 6089 px); visit 04 has its own shared grid (6115 × 6087 px, different `CRVAL`); F487N of visit 08 matches neither. Same visit = stack pixel-for-pixel; different visits = needs registration.
+  **WFPC2/PC behaves the same** (checked while building): proposal 8222 visit 04 F502N, F631N and F673N share 4429 × 4404 px with identical `CRVAL`/`CRPIX`; proposal 5206 visit 02 F502N does not.
+- **Pan-STARRS stacks in the same skycell share one grid** across all five bands (M1 skycell 1784.059: 6279 × 6261 px, identical `CRVAL`/`CRPIX`/`CDELT`/`PC`). A neighbouring skycell (M51 2261.085 vs 2261.075) has the same projection centre but a different `CRPIX2`, so it does not line up.
+- **HST multi-visit mosaics** of one skycell share one grid (step 11).
+- **JWST `_i2d`** products are resampled per filter, often at different pixel scales (0.031″ / 0.063″ for NIRCam); not treated as shared.

@@ -58,6 +58,26 @@ def hst_family(obs_id: str) -> str:
     return "classic"
 
 
+def grid_key(collection: str, filt: str, obs_id: str) -> str:
+    """Name of the pixel grid an image is on; same name = stacks without registration (REQ-60, verification 12).
+
+    HST single-visit images share a grid per visit and detector, HST mosaics per skycell, PS1 stacks per skycell.
+    JWST and anything unrecognised get "" (no claim).
+    """
+    if collection == "PS1":
+        return "PS1 skycell " + ".".join(obs_id.split(".")[3:5])
+    if collection != "HST":
+        return ""
+    parts = obs_id.lower().split("_")
+    family = hst_family(obs_id)
+    if family == "mosaic":
+        return "HST " + parts[1].replace("-", " ")  # "HST skycell p2261x11y16"
+    if family != "single-visit" or filt.lower() not in parts:
+        return ""
+    rest = [t for t in parts[3:-1] if t != filt.lower()]  # instrument and detector, e.g. wfc3 uvis
+    return f"HST visit {parts[1]}_{parts[2]} {'/'.join(rest).upper()}"
+
+
 def _allowed(collection: str, instrument: str) -> bool:
     return any(instrument.upper().startswith(p) for p in INSTRUMENTS.get(collection, ()))
 
@@ -169,6 +189,6 @@ class MastArchive(Archive):
             wavelength_um=wl, bandwidth_um=(hi - lo) / 1000 if lo and hi else None, band_type=band,
             exptime_s=_float(o["t_exptime"]), obs_date=Time(t_min, format="mjd").isot[:10] if t_min else "",
             pixel_scale_arcsec=scale, size_bytes=size, is_mosaic=mosaic, product_level=level,
-            centre_ra=c_ra, centre_dec=c_dec, offset_arcmin=offset,
+            centre_ra=c_ra, centre_dec=c_dec, offset_arcmin=offset, grid=grid_key(coll, filt, obs_id),
             thumbnail_url=_http(_text(o["jpegURL"])), science_extension=1 if coll == "PS1" else "SCI",
         )
