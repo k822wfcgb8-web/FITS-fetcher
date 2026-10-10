@@ -34,3 +34,14 @@ Results of checking the spec's *(verify)* items against the live archives. Libra
 - **Same duplication pattern as HST/HLA/HLSP:** Spitzer data appear as the IRSA pipeline mosaics (`spitzer_seip`) and as several community re-reductions (SINGS, LVL, SIMLA). Herschel at IRSA is **only** community products; the Herschel pipeline archive is at ESA, which is out of scope.
 
 **CADC: not reachable from this machine during testing.** `ws-cadc.canfar.net` resolves but the connection times out; the older `www.cadc-ccda.hia-iha.nrc-gc.ca` name no longer exists. May be a temporary outage or a local network restriction. **To retry.**
+
+## 03 — ESO southern objects; CADC retry (2026-10-10, `03_eso_south_cadc_retry.py`)
+
+**ESO: works, but `calib_level` can't be used as a filter.** Every ESO image product for M42, NGC 7293 and M16 is labelled `calib_level = 2`, including reduced Phase 3 tiles and stacks. A `calib_level >= 3` rule would return nothing. Selection must use **collection/instrument allow-lists plus `dataproduct_subtype`**:
+- `dataproduct_subtype = 'pawprint'` marks unmerged multi-chip products (VIRCAM, OmegaCAM, HAWK-I, VIMOS, SPHERE) → excluded under REQ-12.
+- Blank subtype rows are the combined products: VISTA tiles (VHS, VVVX), HAWK-I stacks.
+- Results also include **ALMA** (interferometry, out of scope), **APEX bolometer maps** at 870 µm (beyond far-IR, outside REQ-20) and **NGTS** (time-series survey, out of scope). The allow-list handles these.
+- **Consequence of REQ-12:** for these objects all VST/OmegaCAM optical data (VST-ATLAS, VPHAS+, ad-hoc programmes) were pawprints only, so ESO contributes **mainly near-IR** (VISTA J/H/Ks/Y tiles, HAWK-I J/H/Ks/Brγ). To check whether KiDS coadds (combined VST tiles) appear for objects in the KiDS footprint.
+- Useful extra columns: `filter`, `access_estsize`, `abmaglim` (depth), `multi_ob`/`n_obs`.
+
+**CADC: still unreachable**, also from outside Claude Code's sandbox (`ws-cadc.canfar.net` port 443 times out after 20 s). So the problem is on CADC's side or between this network and CADC, not a local restriction. **To retry on another day;** if it persists, look for CADC's current service address in their documentation.

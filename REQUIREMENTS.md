@@ -134,6 +134,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 
 ### 7.2 Avoiding duplicate data
 - **REQ-55:** *(Resolved Q-33)* Within MAST, Hubble data are taken **only from the `HST` collection** (standard pipeline products). The `HLA` and `HLSP` collections, which reprocess or re-combine the same observations, are not queried, so each Hubble observation appears once.
+- **REQ-56:** *(Resolved Q-34)* At IRSA, only **mission pipeline collections** are used (initially `spitzer_seip`, `wise_allwise`, `twomass_allsky`; list kept in configuration). Community re-reductions of the same data (e.g. SINGS, LVL, SIMLA, DustPedia, z0MGS, unWISE) are not queried. Herschel is not offered in version 1, because IRSA holds only community Herschel products and the Herschel pipeline archive (ESA) is out of scope. IRSA is queried through its **SIA image service**, because its ObsCore table omits Spitzer.
 - **REQ-35:** The CADC module keeps an explicit **exclusion list** of mirrored collections (initially HST and JWST). The list lives in configuration, not code, so it can be updated if CADC adds new mirrors. During implementation, the CADC collection list must be checked against MAST, ESO and IRSA holdings to finalise it *(verify)*.
 
 ### 7.3 Result metadata to display (suggested)
@@ -260,6 +261,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-31~~ | Several products per filter: **resolved → list all, user chooses (REQ-53)** | — |
 | ~~Q-32~~ | Re-download after settings change: **resolved → reprocess when settings differ (REQ-54)** | — |
 | ~~Q-33~~ | Hubble duplicates inside MAST: **resolved → `HST` collection only (REQ-55)** | — |
+| ~~Q-34~~ | IRSA duplicates: **resolved → mission pipeline collections only, no Herschel in v1 (REQ-56)** | — |
 
 ---
 
@@ -279,4 +281,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.0 | 2026-10-10 | All questions and suggestions resolved. Specification approved. |
 | 1.1 | 2026-10-10 | Added REQ-36 (linearise non-linear encodings), Section 8.3 star-core repair adapted from PixelClip.js (REQ-37–44), Section 8.4 file compatibility (REQ-45–50). Added and resolved Q-27–Q-29 (REQ-51). |
 | 1.1a | 2026-10-10 | REQ-36–50 reviewed: all approved except REQ-44 modified (credit in documentation only). Specification approved. |
-| 1.2 | 2026-10-10 | Renamed to `REQUIREMENTS.md`. Added and resolved Q-30–Q-32: colour set definition (REQ-52), several products per filter (REQ-53), re-processing when settings change (REQ-54). Added and resolved Q-33: Hubble data from the `HST` collection only (REQ-55). |
+| 1.2 | 2026-10-10 | Renamed to `REQUIREMENTS.md`. Added and resolved Q-30–Q-32: colour set definition (REQ-52), several products per filter (REQ-53), re-processing when settings change (REQ-54). Added and resolved Q-33: Hubble data from the `HST` collection only (REQ-55). Added and resolved Q-34: IRSA pipeline collections only (REQ-56). |
