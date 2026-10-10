@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.2 (approved)
+**Version:** 1.3 (approved)
 **Date:** 2026-10-10
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -87,7 +87,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | Item | Requirement |
 |---|---|
 | REQ-06 | Only **linear** data are offered for download. |
-| REQ-36 ✅ | *(Added v1.1)* Products stored with a **non-linear pixel encoding** are converted back to linear values before saving, using the conversion the archive documents. Known case: Pan-STARRS stack images, which I believe store pixels in an asinh-compressed form described by the `BOFFSET` and `BSOFTEN` header keywords *(verify the exact formula against Pan-STARRS documentation)*. Any product whose encoding can't be linearised is excluded. |
+| REQ-36 ✅ | *(Added v1.1)* Products stored with a **non-linear pixel encoding** are converted back to linear values before saving, using the conversion the archive documents. Known case: Pan-STARRS stack images, which I believe store pixels in an asinh-compressed form described by the `BOFFSET` and `BSOFTEN` header keywords *(formula `BOFFSET + BSOFTEN·2·sinh(x / (2.5/ln 10))` confirmed in verification step 06)*. Any product whose encoding can't be linearised is excluded. |
 | S-13 ✅ | "Linear" is defined as: calibrated pixel values proportional to detected flux (e.g., counts, electrons/s, MJy/sr, calibrated flux), with no stretch, gamma, histogram transformation, or 8/16-bit display scaling applied. |
 | S-14 ✅ | Accepted product levels (initial list, *verify each against archive documentation*): HST drizzled `_drz`/`_drc`; JWST Level 3 `_i2d`; Pan-STARRS stacked images; CFHT MegaPipe stacks (CADC); ESO Phase 3 reduced images (VST/VISTA tiles, HAWK-I stacks); Spitzer post-BCD mosaics; WISE/2MASS atlas images; Euclid calibrated images. |
 | REQ-15 | *(Resolved Q-10)* Only **combined products** (drizzled, stacked, co-added, or mosaicked by the archive) are offered. Single calibrated exposures (e.g., HST `_flt`/`_flc`, ZTF single frames) are excluded. |
@@ -152,8 +152,9 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | REQ-32 | *(Resolved Q-20)* Weight, exposure, error and data-quality maps are **never saved**. Only the science image is written. |
 | REQ-33 | *(Resolved Q-21)* Output format is **FITS only**. |
 | REQ-22 | *(Resolved Q-19)* **NaN (blank) pixels are always replaced with 0** in the saved file. When reprojection or cutouts are used (REQ-24, REQ-25), the replacement happens **last**, so zeros are never interpolated into real data. Note: in background-subtracted images, 0 can also be a genuine sky value, so replaced pixels can't be told apart afterwards. |
-| REQ-23 | *(Resolved Q-17)* The **original archive file is deleted** once the science image has been extracted and saved successfully. If extraction fails, the original is kept and the error is logged. Because the manifest (S-30) was denied, the **source URL and download date are written into the saved FITS header** (as `HISTORY` or custom keywords), so the original can be downloaded again. |
+| REQ-23 | *(Resolved Q-17)* The **original archive file is deleted** once the science image has been extracted and saved successfully. If extraction fails, the original is kept and the error is logged. Because the manifest (S-30) was denied, the **source URL and download date are written into the saved FITS header** (as `HISTORY` or custom keywords), so the original can be downloaded again. Where only the science extension is fetched (REQ-57), no original file is stored, so there is nothing to delete. |
 | REQ-12 | *(Resolved Q-18)* For cameras with multiple detector chips, **only products the archive has already combined into a single image** (tiles, stacks, drizzled mosaics) are offered. Unmerged multi-chip files (e.g., VISTA "pawprints", single OmegaCAM exposures) are excluded in version 1. |
+| REQ-57 | *(Resolved Q-36)* Where the archive supports **partial (HTTP range) reads**, the app fetches **only the science extension** and the header data it needs, not the whole file. Verified for MAST (HST `_drc`/`_drz`, JWST `_i2d`), where the science array is about one third (HST) to one seventh (JWST) of the file. Archives that don't support partial reads, and single-image files, are downloaded whole. Estimated sizes (S-26) reflect what will actually be fetched. |
 
 
 ### 8.1 Optional processing aids (suggested; none alter the data's linearity)
@@ -174,7 +175,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | Item | Requirement |
 |---|---|
 | REQ-51 | *(Resolved Q-27)* Star-core repair applies to files from **all archives**, not only MAST. |
-| REQ-37 | *(Confirmed by Q-28, Q-29)* **Hole detection.** A pixel is a candidate for repair if it is NaN, exactly 0, or (where the file has a data-quality array) flagged as saturated. The data-quality array is read for this purpose before it is discarded under REQ-08. *(Which flag values mean "saturated" differs per instrument; to verify for each one.)* |
+| REQ-37 | *(Confirmed by Q-28, Q-29; revised by Q-35 after verification)* **Hole detection.** A pixel is a candidate for repair if it is **NaN or exactly 0**. Data-quality flags are not used: verification showed that HST and JWST combined products carry no DQ array, and Pan-STARRS keeps its mask in a separate file while its blanked cores already decode to NaN (verify/FINDINGS.md, steps 05–07). |
 | REQ-38 ✅ | **Only enclosed holes are filled.** Candidate pixels are grouped into connected regions. A region is repaired only if (a) it does **not touch the image edge**, (b) it is **fully surrounded by valid pixels**, and (c) its area is **at most a set limit** (default 2,000 pixels, adjustable; default to be tuned on the S-35 test objects). This prevents filling off-detector borders, chip gaps and other large blank areas, which stay blank and are handled by REQ-22. |
 | REQ-39 ✅ | **Fill method.** Holes are filled from the rim inward, one layer at a time: in each pass, every hole pixel touching at least one valid pixel (8-neighbour) is set to the mean of its valid neighbours, using values from the previous pass. This keeps PixelClip's "mean of nearest valid neighbours" approach but fills symmetrically, instead of in raster order (which in the original weights the fill toward the upper-left rim). |
 | REQ-40 ✅ | **No threshold in pixel units.** Unlike PixelClip, the app does not use a brightness threshold. PixelClip's 0.0001 threshold applies to PixInsight's 0–1 rescaled image. In the archive's physical units, background-subtracted sky is near or below 0, so a threshold would alter the whole background. |
@@ -255,13 +256,16 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-25~~ | Resolution mixing: **resolved → warn only (REQ-26)** | — |
 | ~~Q-26~~ | Reprojection grid: **resolved → finest resolution (REQ-29)** | — |
 | ~~Q-27~~ | Repair scope: **resolved → all archives (REQ-51)** | — |
-| ~~Q-28~~ | DQ flags: **resolved → yes, saturated flags are filled (REQ-37)** | — |
+| ~~Q-28~~ | DQ flags: **resolved → yes, saturated flags are filled (REQ-37); superseded by Q-35** | — |
 | ~~Q-29~~ | Zero pixels: **resolved → NaN and zero both count (REQ-37)** | — |
 | ~~Q-30~~ | Colour set definition: **resolved → all filters per instrument, user ticks filters (REQ-52)** | — |
 | ~~Q-31~~ | Several products per filter: **resolved → list all, user chooses (REQ-53)** | — |
 | ~~Q-32~~ | Re-download after settings change: **resolved → reprocess when settings differ (REQ-54)** | — |
 | ~~Q-33~~ | Hubble duplicates inside MAST: **resolved → `HST` collection only (REQ-55)** | — |
 | ~~Q-34~~ | IRSA duplicates: **resolved → mission pipeline collections only, no Herschel in v1 (REQ-56)** | — |
+| ~~Q-35~~ | Hole detection after verification: **resolved → NaN and zero only, no DQ flags (REQ-37 revised)** | — |
+| ~~Q-36~~ | Partial downloads: **resolved → science extension only where supported (REQ-57)** | — |
+| Q-37 | Siril test (REQ-50): **user will install Siril**; scripting of `siril-cli` still to verify | No |
 
 ---
 
@@ -282,3 +286,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.1 | 2026-10-10 | Added REQ-36 (linearise non-linear encodings), Section 8.3 star-core repair adapted from PixelClip.js (REQ-37–44), Section 8.4 file compatibility (REQ-45–50). Added and resolved Q-27–Q-29 (REQ-51). |
 | 1.1a | 2026-10-10 | REQ-36–50 reviewed: all approved except REQ-44 modified (credit in documentation only). Specification approved. |
 | 1.2 | 2026-10-10 | Renamed to `REQUIREMENTS.md`. Added and resolved Q-30–Q-32: colour set definition (REQ-52), several products per filter (REQ-53), re-processing when settings change (REQ-54). Added and resolved Q-33: Hubble data from the `HST` collection only (REQ-55). Added and resolved Q-34: IRSA pipeline collections only (REQ-56). |
+| 1.3 | 2026-10-10 | After verification steps 01–09: REQ-37 revised (NaN/zero only, Q-35); REQ-57 added (science-extension-only downloads, Q-36); REQ-23 note added; Q-37 opened (Siril). REQ-36 formula confirmed. |
