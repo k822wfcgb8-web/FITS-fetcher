@@ -16,8 +16,28 @@ EMISSION_LINES = {
     "Hα": 0.6563, "Hβ": 0.4861, "[OIII]": 0.5007, "[SII]": 0.6724, "[NII]": 0.6584,
 }
 
-# HST/JWST style names: F + digits + W/M/N/LP (+ optional suffix).
-_HST_JWST = re.compile(r"^F(\d{3,4})(W2|W|M|N|LP)\b", re.IGNORECASE)
+# REQ-82: colour names by central wavelength: (upper edge in µm, name, swatch colour). Light the eye can't see has
+# no swatch colour; the page draws a dashed swatch for it.
+COLOUR_BANDS = (
+    (0.38, "UV", None), (0.42, "violet", "#7b2fd0"), (0.45, "indigo", "#4b3fd6"), (0.485, "blue", "#2f6fe0"),
+    (0.50, "cyan", "#1fa6c4"), (0.565, "green", "#3aa845"), (0.59, "yellow", "#d4bd1c"), (0.625, "orange", "#e8892a"),
+    (0.68, "red", "#d93a2a"), (0.75, "deep red", "#8f1d1d"), (1.0, "far red", None), (2.5, "near-IR", None),
+    (5.0, "thermal IR", None), (float("inf"), "mid-IR", None),
+)
+VISIBLE_UM = (0.38, 0.75)
+# Natural-colour channels (REQ-82): violet to cyan is blue, green and yellow are green, orange to deep red is red.
+NATURAL_CHANNELS = {"B": (0.38, 0.50), "G": (0.50, 0.59), "R": (0.59, 0.75)}
+
+
+def colour(wavelength_um: float | None) -> tuple[str, str | None]:
+    """(colour name, swatch colour or None) for a central wavelength; ('?', None) if it's unknown."""
+    if wavelength_um is None:
+        return "?", None
+    return next((name, swatch) for top, name, swatch in COLOUR_BANDS if wavelength_um < top)
+
+
+# HST/JWST style names: F + digits + W/M/N/LP (+ optional suffix); WFC3/UVIS quad filters are FQ…N.
+_HST_JWST = re.compile(r"^FQ?(\d{3,4})(W2|W|M|N|LP)\b", re.IGNORECASE)
 
 
 # Instruments whose F-numbers are in units of 10 nm rather than 1 nm.

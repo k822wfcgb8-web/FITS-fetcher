@@ -71,3 +71,49 @@ def test_grid_groups_mark_images_sharing_a_grid_in_two_or_more_filters(product):
     assert [p.filter for p in grids[0].products] == ["F502N", "F631N", "F673N"]
     assert all(v8 not in g.grid for g in grids)  # one filter only: no group
     assert sets[0].to_dict()["grids"][1]["product_keys"] == [p.key for p in grids[1].products]
+
+
+# ---------- colour hint (REQ-82) ----------
+def _hint(product, names, instrument="ACS/WFC"):
+    sets = build_sets([product(f, instrument) for f in names], min_filters=2)
+    return sets[0].to_dict()["colours"]
+
+
+def test_colour_names_and_swatches(product):
+    c = _hint(product, ["F435W", "F555W", "F658N", "F814W"])
+    assert [(f["filter"], f["colour"]) for f in c["filters"]] == [
+        ("F435W", "indigo"), ("F555W", "green"), ("F658N", "red"), ("F814W", "far red")]
+    assert c["filters"][0]["swatch"] and c["filters"][3]["swatch"] is None  # far red is invisible: dashed swatch
+
+
+def test_natural_colour_first_lists_unused_filters(product):
+    c = _hint(product, ["F225W", "F275W", "F343N", "F395N", "F467M", "F502N", "F631N", "FQ727N", "F763M", "FQ889N"],
+              "WFC3/UVIS")
+    assert c["rgb"] == {"B": ["F395N", "F467M"], "G": ["F502N"], "R": ["F631N", "FQ727N"]}
+    assert c["kind"] == "natural colour"
+    assert c["unused"] == ["F225W", "F275W", "F343N", "F763M", "FQ889N"]
+
+
+def test_infrared_split_in_thirds_keeps_close_filters_together(product):
+    c = _hint(product, ["F150W2", "F212N", "F322W2", "F323N"], "NIRCAM/IMAGE")
+    assert [f["colour"] for f in c["filters"]] == ["near-IR", "near-IR", "thermal IR", "thermal IR"]
+    assert c["rgb"] == {"B": ["F150W2"], "G": ["F212N"], "R": ["F322W2", "F323N"]}
+    assert c["kind"] == "false colour (all infrared)"
+
+
+def test_two_filters_and_missing_colour(product):
+    c = _hint(product, ["g", "r"], "GPC1")
+    assert c["rgb"] == {"B": ["g"], "G": [], "R": ["r"]} and c["kind"] == "approximate colour (no green filter)"
+    c = _hint(product, ["F435W", "F658N", "F814W"])
+    assert c["rgb"] == {"B": ["F435W"], "G": ["F658N"], "R": ["F814W"]}
+    assert c["kind"] == "partly natural (includes infrared)"
+
+
+def test_many_filters_split_evenly(product):
+    """M51's NIRCam set: splitting at the largest jumps gave 1, 9 and 6 filters."""
+    names = ["F115W", "F140M", "F150W", "F164N", "F182M", "F187N", "F200W", "F210M", "F212N", "F250M", "F300M",
+             "F335M", "F360M", "F405N", "F430M", "F444W"]
+    c = _hint(product, names, "NIRCAM/IMAGE")
+    assert [len(c["rgb"][ch]) for ch in "BGR"] == [4, 7, 5]
+    miri = _hint(product, ["F560W", "F770W", "F1000W", "F1130W", "F1280W", "F1500W", "F1800W", "F2100W"], "MIRI/IMAGE")
+    assert miri["rgb"]["G"] == ["F1130W", "F1280W"]

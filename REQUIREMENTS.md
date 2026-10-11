@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.15 (approved)
+**Version:** 1.16 (approved)
 **Date:** 2026-10-11
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -121,6 +121,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | REQ-26 | *(Resolved Q-25)* When instrument mixing is on, the app **warns** (but does not block) when the pixel scales in a set differ by more than a set ratio (default 4×, adjustable in settings). |
 | REQ-11 | *(Resolved Q-12)* Whether a colour set may **mix instruments or archives** is **user-selectable**. Default: **same instrument only**. When mixing is enabled, each result set lists the pixel scale of every filter so the user can see resolution differences. |
 | REQ-52 | *(Resolved Q-30)* A **colour set** is **all qualifying filters from one instrument** for the object; the app does not list separate filter combinations. The user ticks which filters in the set to download (S-06). When instrument mixing is enabled (REQ-11), all qualifying filters from all selected archives and instruments form a single set for the object. A set is shown only if it meets the minimum filter count (REQ-10). |
+| REQ-82 | *(Resolved Q-69–Q-71)* Every colour set's heading carries a **colour hint**. (1) Each filter with a **swatch and colour name** from its central wavelength: UV (<380 nm), violet, indigo, blue, cyan, green, yellow, orange, red, deep red (680–750 nm), **far red** (0.75–1 µm), **near-IR** (1–2.5 µm), **thermal IR** (2.5–5 µm), **mid-IR** (>5 µm). Light the eye can't see gets a dashed swatch. (2) **Suggested blue, green and red channels**: *natural colour first*: if the set has visible filters in blue (380–500 nm), green (500–590 nm) and red (590–750 nm), only those are used, by colour, and the other filters are listed as 'not used'. Otherwise all filters are split into **equal thirds by count**, never between filters within 5% in wavelength (F322W2 and F323N share a channel); with only two groups, green is the average of blue and red. A label says natural colour, partly natural (includes UV/infrared), approximate colour (no green filter) or false colour (all infrared/UV). It's a hint, not a rule. |
 | REQ-53 | *(Resolved Q-31)* When an archive holds **several combined products in the same filter** (different programmes, pointings or depths), **all of them are listed under that filter's row**, each with its exposure time, observation date and observation ID, and the user chooses which to download. They still count as one wavelength (S-16). Automatic selection is left to the future "best set" feature (Section 11). |
 
 
@@ -331,6 +332,9 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-66~~ | Which telescopes for planets: **resolved → Hubble and JWST only, no Pan-STARRS (REQ-79)** | — |
 | ~~Q-67~~ | Hubble's planet images are almost all single exposures, excluded by REQ-15: **resolved → offered for planets and moons, marked as single exposures (REQ-79)** | — |
 | ~~Q-68~~ | Which images form one planet colour set: **resolved → one visit only (REQ-80)** | — |
+| ~~Q-69~~ | How to show which part of the spectrum a set covers: **resolved → swatch and colour name per filter, plus suggested RGB channels (REQ-82)** | — |
+| ~~Q-70~~ | Colour names: **resolved → the visible names plus far red, near-IR, thermal IR and mid-IR (REQ-82)** | — |
+| ~~Q-71~~ | How to pick the RGB channels: **resolved → natural colour first; otherwise equal thirds keeping close filters together, after splitting at the largest jumps gave 1/9/6 filters on M51's NIRCam set (REQ-82)** | — |
 
 ---
 
@@ -364,3 +368,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.13 | 2026-10-11 | Added and resolved Q-61–Q-62 after NGC 3675's WFPC2 pair stretched to grey: trim the blank border (REQ-75), warn when still mostly blank (REQ-76); REQ-41 order updated. |
 | 1.14 | 2026-10-11 | Added and resolved Q-63 after a name lookup hung during a SIMBAD outage: 15 s SIMBAD limit with Sesame fallback (REQ-77). |
 | 1.15 | 2026-10-11 | Added and resolved Q-64–Q-68 after 'saturn' found only the Saturn Nebula: planets and major moons by name (REQ-78), searched by MAST target name in Hubble and JWST with Hubble single exposures allowed (REQ-79), one visit per colour set (REQ-80), never cut (REQ-81). Scope updated. |
+| 1.16 | 2026-10-11 | Added and resolved Q-69–Q-71: colour hint on every set heading, with colour names per filter and suggested RGB channels (REQ-82). |

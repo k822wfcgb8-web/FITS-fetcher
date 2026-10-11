@@ -5,6 +5,7 @@
 - Several products in one filter are listed together and count once (REQ-53, S-16).
 - A set is shown only with at least `min_filters` distinct filters (REQ-07, REQ-10).
 - Images on one pixel grid in two or more filters are marked as a matched group (REQ-60).
+- Each set carries a colour hint (REQ-82): every filter's colour name, and suggested blue, green and red channels.
 - Planets and moons (REQ-80): only images of one visit form a set, because the body moves, rotates and changes;
   the set's name ends in the visit, and sets with the same filter count are listed newest first.
 """
@@ -70,6 +71,10 @@ class ColourSet:
         return " + ".join(bits)
 
     @property
+    def colours(self) -> dict:
+        return colour_hint(self.rows)
+
+    @property
     def coverage(self) -> float | None:
         """REQ-69: the lowest coverage over filters, taking the best image in each; None if unknown."""
         best = [max((p.coverage for p in r.products if p.coverage is not None), default=None) for r in self.rows]
@@ -80,7 +85,66 @@ class ColourSet:
                 "coverage": self.coverage,
                 "warnings": self.warnings, "rows": [r.to_dict() for r in self.rows],
                 "grids": [g.to_dict() for g in self.grids], "position": self.position,
-                "visit": self.visit, "date": self.date}
+                "visit": self.visit, "date": self.date, "colours": self.colours}
+
+
+def colour_hint(rows: list[FilterRow]) -> dict:
+    """REQ-82: each filter's colour name and swatch, and suggested channels.
+
+    Natural colour first: if visible filters cover blue, green and red, only those are used, by colour, and the
+    rest are listed as unused. Otherwise every filter with a known wavelength is split into equal thirds by count,
+    moving a cut that would fall between filters within 5% in wavelength (F322W2, F323N) to the nearest wider step.
+    Splitting at the largest jumps instead gave lopsided channels on M51 (NIRCam: 1, 9 and 6 filters). With two
+    groups, green is left to the user (e.g. the average of blue and red).
+    """
+    filters_ = [{"filter": r.filter, "colour": filters.colour(r.wavelength_um)[0],
+                 "swatch": filters.colour(r.wavelength_um)[1]} for r in rows]
+    known = sorted((r for r in rows if r.wavelength_um), key=lambda r: r.wavelength_um)
+    natural = {ch: [r.filter for r in known if lo <= r.wavelength_um < hi]
+               for ch, (lo, hi) in filters.NATURAL_CHANNELS.items()}
+    if all(natural.values()):
+        used = {f for fs in natural.values() for f in fs}
+        return {"filters": filters_, "rgb": natural, "kind": "natural colour",
+                "unused": [r.filter for r in known if r.filter not in used]}
+    if len(known) < 2:
+        return {"filters": filters_, "rgb": None, "kind": "", "unused": []}
+    groups = _thirds(known)
+    if len(groups) < 2:
+        return {"filters": filters_, "rgb": None, "kind": "", "unused": []}
+    if len(groups) == 2:
+        groups = [groups[0], [], groups[1]]
+    rgb = {ch: [r.filter for r in g] for ch, g in zip("BGR", groups)}
+    missing = [{"B": "blue", "G": "green", "R": "red"}[ch] for ch, fs in natural.items() if not fs]
+    return {"filters": filters_, "rgb": rgb, "kind": _kind([r.wavelength_um for r in known], missing), "unused": []}
+
+
+CLOSE_RATIO = 1.05  # filters closer than this in wavelength always share a channel (REQ-82)
+
+
+def _thirds(rows: list[FilterRow]) -> list[list[FilterRow]]:
+    """Up to three groups of near-equal size, in wavelength order, never splitting close filters."""
+    n = len(rows)
+    if n == 2:
+        return [rows[:1], rows[1:]] if rows[1].wavelength_um / rows[0].wavelength_um >= CLOSE_RATIO else [rows]
+    step = {i: rows[i].wavelength_um / rows[i - 1].wavelength_um for i in range(1, n)}
+    cuts: list[int] = []
+    for target in (round(n / 3), round(2 * n / 3)):
+        allowed = [i for i in step if step[i] >= CLOSE_RATIO and i > (cuts[-1] if cuts else 0)]
+        if allowed:
+            cuts.append(min(allowed, key=lambda i: (abs(i - target), -step[i])))
+    bounds = [0, *cuts, n]
+    return [rows[a:b] for a, b in zip(bounds, bounds[1:])]
+
+
+def _kind(wavelengths: list[float], missing: list[str]) -> str:
+    lo, hi = filters.VISIBLE_UM
+    uv, ir = any(w < lo for w in wavelengths), any(w >= hi for w in wavelengths)
+    outside = " and ".join(x for x, on in (("UV", uv), ("infrared", ir)) if on)
+    if not any(lo <= w < hi for w in wavelengths):
+        return f"false colour (all {outside})" if outside != "UV and infrared" else "false colour (UV and infrared)"
+    if outside:
+        return f"partly natural (includes {outside})"
+    return f"approximate colour (no {' or '.join(missing)} filter)"
 
 
 def _grid_groups(rows: list[FilterRow]) -> list[GridGroup]:

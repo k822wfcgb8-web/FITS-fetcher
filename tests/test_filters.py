@@ -48,3 +48,14 @@ def test_line_for():
     assert filters.line_for(0.502) == "[OIII]"
     assert filters.line_for(0.80) is None
     assert filters.line_for(None) is None
+
+
+def test_quad_filters_are_narrowband():
+    assert filters.parse("FQ727N", "WFC3/UVIS") == (0.727, "narrow")
+
+
+@pytest.mark.parametrize("wl, name", [(0.3, "UV"), (0.40, "violet"), (0.432, "indigo"), (0.501, "green"),
+                                      (0.6563, "red"), (0.727, "deep red"), (0.814, "far red"), (1.5, "near-IR"),
+                                      (3.23, "thermal IR"), (7.7, "mid-IR"), (None, "?")])
+def test_colour_names(wl, name):
+    assert filters.colour(wl)[0] == name

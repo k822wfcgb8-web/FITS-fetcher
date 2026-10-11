@@ -290,6 +290,21 @@ function showElsewhere(data) {
   updateSelection();
 }
 
+// REQ-82: each filter's colour, and suggested blue, green and red channels for a colour image.
+function colourHint(set) {
+  const c = set.colours;
+  if (!c) return null;
+  const swatch = (f) => el("span", f.swatch ? { class: "swatch", style: `background:${f.swatch}` }
+    : { class: "swatch unseen", title: "Light the eye can't see" });
+  const names = el("div", { class: "colour-line" }, c.filters.map((f) =>
+    el("span", {}, swatch(f), `${f.filter} `, el("span", { class: "muted" }, f.colour))));
+  const rgb = c.rgb && el("div", { class: "colour-line" }, el("span", { class: "muted" }, "Suggested:"),
+    ["B", "G", "R"].map((ch) => el("span", { class: `rgb rgb-${ch}` },
+      `${ch} ${c.rgb[ch].length ? c.rgb[ch].join(" + ") : "average of B and R"}`)),
+    el("span", { class: "muted" }, c.kind + (c.unused.length ? ` · not used: ${c.unused.join(", ")}` : "")));
+  return el("div", { class: "colour-hint" }, names, rgb);
+}
+
 function setVisit(set) {
   if (!set.visit) return null;
   return el("span", { class: "chip", title: "Only images from this one visit are in the set (REQ-80)" },
@@ -374,7 +389,8 @@ function renderSet(set) {
     // An off-centre set's folder name ends in its position, a planet set's in its visit; their chips show those.
     el("summary", {}, el("span", { class: "set-name" }, ...heading, " · ",
       (set.position || set.visit ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
-      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), allBtn),
+      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), allBtn,
+      colourHint(set)),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
     el("div", { class: "table-wrap" }, el("table", {},
