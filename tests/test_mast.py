@@ -12,9 +12,9 @@ MISSES = "POLYGON 203.37 47.10 203.57 47.10 203.57 47.30 203.37 47.30"
 
 def obs_table(rows):
     cols = ["obs_collection", "instrument_name", "filters", "obs_id", "s_region", "em_min", "em_max",
-            "t_min", "t_exptime", "jpegURL", "s_ra", "s_dec", "target_name"]
+            "t_min", "t_exptime", "jpegURL", "s_ra", "s_dec", "target_name", "dataURL"]
     return Table(rows=[[r.get(c, d) for c, d in zip(cols, ["HST", "ACS/WFC", "F814W", "x", COVERS, 700.0, 900.0,
-                                                            58000.0, 1000.0, "", 202.47, 47.20, "TARGET"])] for r in rows],
+                                                            58000.0, 1000.0, "", 202.47, 47.20, "TARGET", ""])] for r in rows],
                  names=cols)
 
 
@@ -101,6 +101,49 @@ def test_mosaic_box_estimate_uses_object_size(fake_mast):
     p = mast.MastArchive(Settings(hst_show_mosaics=True)).search(small, 0.02)[0]
     rows = int(2 * 2.0 * 60 / 0.04)  # 2x size, in 0.04" pixels
     assert p.size_bytes == rows * mast.SKYCELL_WIDTH_PX * 4
+
+
+# ---------- planets and moons (REQ-79, REQ-80) ----------
+SATURN = Target(query="saturn", matched_id="Saturn", ra=0.0, dec=0.0, object_type="Planet", body="Saturn")
+
+
+@pytest.mark.parametrize("coll, obs_id, visit", [
+    ("JWST", "jw01247-o301_t637_nircam_clear-f150w2", "jw01247-o301"),
+    ("HST", "iemr40b7q", "iemr40"),
+    ("HST", "n4et01010", "n4et01"),
+    ("HST", "hst_14704_17_acs_wfc_f814w_jd8f17", "hst_14704_17"),
+])
+def test_visit_key(coll, obs_id, visit):
+    assert mast.visit_key(coll, obs_id) == visit
+
+
+def test_planet_search_by_name(monkeypatch):
+    queries = []
+
+    def query(**kw):
+        queries.append(kw)
+        return obs_table([
+            {"obs_collection": "JWST", "instrument_name": "NIRCAM/IMAGE", "filters": "F322W2;F323N",
+             "obs_id": "jw01247-o301_t637_nircam_f322w2-f323n", "em_min": 3200.0, "em_max": 3300.0,
+             "s_region": MISSES},  # wherever Saturn was, not at the placeholder position
+            {"obs_id": "iemr40b7q", "instrument_name": "WFC3/UVIS", "filters": "F631N",
+             "dataURL": "mast:HST/product/iemr40b7q_drz.fits"},
+            {"obs_id": "n4et01010", "instrument_name": "NICMOS/NIC2", "filters": "F180M",
+             "dataURL": "mast:HST/product/n4et01010_mos.fits"},
+            {"obs_id": "hst_skycell-p1_acs_wfc_f814w_all"},  # mosaics never hold a moving target's images
+        ])
+    monkeypatch.setattr(mast.Observations, "query_criteria", query)
+    found = mast.MastArchive(Settings()).search(SATURN, 0.02)
+    assert len(queries) == 1  # no Pan-STARRS query, no position
+    assert queries[0]["target_name"] == "SATURN*" and queries[0]["mtFlag"] is True
+    assert "coordinates" not in queries[0] and "PS1" not in queries[0]["obs_collection"]
+    by_id = {p.obs_id: p for p in found}
+    assert set(by_id) == {"jw01247-o301_t637_nircam_f322w2-f323n", "iemr40b7q", "n4et01010"}
+    single, combined = by_id["iemr40b7q"], by_id["n4et01010"]
+    assert single.url.endswith("mast:HST/product/iemr40b7q_drz.fits") and single.product_level == "HST single exposure drz"
+    assert combined.url.endswith("n4et01010_mos.fits") and combined.product_level == "HST combined mos"
+    assert {p.visit for p in found} == {"jw01247-o301", "iemr40", "n4et01"}
+    assert all(p.offset_arcmin is None and p.coverage is None for p in found)
 
 
 def test_query_failure_becomes_archive_error(monkeypatch):

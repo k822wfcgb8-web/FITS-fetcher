@@ -108,9 +108,9 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
         ra: float, dec: float, matched_id: str = "", query: str = "", size_arcmin: float | None = None,
         archives: str = "MAST", min_filters: int = Query(settings.min_filters, ge=2),
         mix_instruments: bool = settings.mix_instruments, band_type: str = "either", lines: str = "",
-        hst_mosaics: bool = settings.hst_show_mosaics, telescopes: str | None = None,
+        hst_mosaics: bool = settings.hst_show_mosaics, telescopes: str | None = None, body: str = "",
     ):
-        target = Target(query=query, matched_id=matched_id, ra=ra, dec=dec, size_arcmin=size_arcmin)
+        target = Target(query=query, matched_id=matched_id, ra=ra, dec=dec, size_arcmin=size_arcmin, body=body)
         run_settings = replace(settings, hst_show_mosaics=hst_mosaics)
         chosen = [a for a in archives.split(",") if a in ARCHIVES]
         skipped = []

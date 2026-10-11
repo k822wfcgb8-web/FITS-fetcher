@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.14 (approved)
+**Version:** 1.15 (approved)
 **Date:** 2026-10-11
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -24,6 +24,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 - **REQ-21:** *(Revised in v0.8; replaces the v0.4 removal)* **CADC is supported only for data not available from MAST, ESO or IRSA.** CADC collections that mirror another archive (at least HST and JWST, which MAST holds; *full list to verify*) are never queried, so the same observation never appears twice. This applies even when MAST is not selected. Expected CADC-only sources include CFHT (MegaCam/MegaPipe, WIRCam) and Gemini imaging *(verify)*.
 - Imaging data only, broadband and narrowband.
 - Objects identified by common name or catalogue designation.
+- Planets, Pluto and major moons, searched by name in Hubble and JWST (REQ-78 to REQ-81).
 
 ### 2.2 Out of scope (proposed; confirm)
 - Spectroscopy, interferometry, time-series light curves, catalogues.
@@ -82,6 +83,10 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | REQ-13 | *(Resolved Q-06)* Beyond Messier, NGC and IC, **any designation the name resolver recognises** is accepted; there is no fixed catalogue list and no built-in lookup table in version 1. If the resolver doesn't recognise a name, the user is told so and can enter RA/Dec instead (S-11). |
 | REQ-14 | *(Resolved Q-08)* An image counts as covering the object only if its footprint **contains the object's resolved centre coordinates**. Images of a large object that miss its centre are offered separately as off-centre sets (REQ-71). |
 | REQ-77 | *(Resolved Q-63, after "Helix Nebula" hung on 2026-10-11 while SIMBAD wasn't answering)* Every SIMBAD query **gives up after 15 s**. Once SIMBAD has failed, the lookup stops asking it and uses **Sesame's position** alone (Sesame has its own mirror and time limit). The object panel then notes that the size is unknown, so whole-object boxes, off-centre sets and the 'Also inside' list aren't available for that search. |
+| REQ-78 | *(Resolved Q-64, Q-65, after 'saturn' found only the Saturn Nebula, NGC 7009)* The **planets, Pluto and major moons** are recognised by name, in any case: Mercury to Neptune, Pluto; the Moon; Io, Europa, Ganymede, Callisto; Mimas, Enceladus, Tethys, Dione, Rhea, Titan, Iapetus; Miranda, Ariel, Umbriel, Titania, Oberon; Triton; Charon. The body is **listed first among the candidates** (REQ-18), with the resolver's other matches for the same text after it (e.g. 'saturn': Saturn, then NGC 7009). It is shown as 'Solar System · moves across the sky' instead of coordinates. |
+| REQ-79 | *(Resolved Q-66, Q-67)* A planet or moon is searched **by MAST target name, not by position**: every public moving-target image whose target name starts with the body's name ('SATURN', 'SATURN-MAPS', 'SATURN-CENTRE'). Only **Hubble and JWST** are searched; Pan-STARRS is skipped whatever the tick boxes say. Hubble makes no Advanced Products for moving targets, so for planets and moons its **classic products are offered, including drizzled single exposures** (an exception to REQ-15 and REQ-58; Saturn: 1,450 of 1,458 Hubble images are single exposures). Each row's product says 'HST single exposure drz' or 'HST combined …'. Coverage and the object's offset from the image centre aren't shown, and the 'Elsewhere in' and 'Also inside' lists don't apply. |
+| REQ-80 | *(Resolved Q-68)* For planets and moons, **a colour set holds the filters of one visit only** (JWST observation, e.g. `jw01247-o301`; Hubble `ipppss`), because the body moves, rotates and changes between visits. Each set shows a **visit chip** with the visit and its date, and its folder name ends in the visit. Sets with the same number of filters are listed newest first. Instrument mixing (REQ-11) mixes instruments within a visit only. |
+| REQ-81 | *(Resolved with Q-66)* Planet and moon images are **never cut around the object** (REQ-25): there's no fixed position to cut around. The 'Cut around the object' box is greyed out for them. |
 | S-12 ✅ | Search radius is set automatically from the object's apparent size when known, with a manual override. |
 
 
@@ -321,6 +326,11 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-61~~ | Mostly blank images (NGC 3675 WFPC2: 56% blank, so STF's median and spread were 0): **resolved → trim to the data and warn above 30% blank (REQ-75, REQ-76)** | — |
 | ~~Q-62~~ | Trimming images on a shared grid: **resolved → one box from the grid's archive footprints plus 16 px (REQ-75)** | — |
 | ~~Q-63~~ | Name lookup hung while SIMBAD wasn't answering: **resolved → 15 s limit, then Sesame's position with a note (REQ-77)** | — |
+| ~~Q-64~~ | Which Solar System bodies ('saturn' found NGC 7009, not the planet imaged by JWST programme 1247): **resolved → planets, Pluto and major moons, a fixed list (REQ-78)** | — |
+| ~~Q-65~~ | What 'saturn' lists: **resolved → the planet first, the Saturn Nebula still below it (REQ-78)** | — |
+| ~~Q-66~~ | Which telescopes for planets: **resolved → Hubble and JWST only, no Pan-STARRS (REQ-79)** | — |
+| ~~Q-67~~ | Hubble's planet images are almost all single exposures, excluded by REQ-15: **resolved → offered for planets and moons, marked as single exposures (REQ-79)** | — |
+| ~~Q-68~~ | Which images form one planet colour set: **resolved → one visit only (REQ-80)** | — |
 
 ---
 
@@ -353,3 +363,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.12 | 2026-10-11 | Added and resolved Q-58–Q-60 after the NGC 3675 download: MAST telescope tick boxes (REQ-72), telescope named on sets and rows (REQ-73), telescope fact-sheet pop-ups (REQ-74). |
 | 1.13 | 2026-10-11 | Added and resolved Q-61–Q-62 after NGC 3675's WFPC2 pair stretched to grey: trim the blank border (REQ-75), warn when still mostly blank (REQ-76); REQ-41 order updated. |
 | 1.14 | 2026-10-11 | Added and resolved Q-63 after a name lookup hung during a SIMBAD outage: 15 s SIMBAD limit with Sesame fallback (REQ-77). |
+| 1.15 | 2026-10-11 | Added and resolved Q-64–Q-68 after 'saturn' found only the Saturn Nebula: planets and major moons by name (REQ-78), searched by MAST target name in Hubble and JWST with Hubble single exposures allowed (REQ-79), one visit per colour set (REQ-80), never cut (REQ-81). Scope updated. |

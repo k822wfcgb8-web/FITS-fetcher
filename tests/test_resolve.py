@@ -40,6 +40,29 @@ def test_common_names_get_candidates(routes):
     assert routes == [("simbad", "Crab")]
 
 
+@pytest.mark.parametrize("text, name, kind", [
+    ("saturn", "Saturn", "Planet"), ("  JUPITER ", "Jupiter", "Planet"), ("Pluto", "Pluto", "Dwarf planet"),
+    ("titan", "Titan", "Moon of Saturn"), ("Moon", "Moon", "Moon of Earth"),
+])
+def test_planets_and_moons_come_first(routes, text, name, kind):
+    """REQ-78: 'saturn' used to resolve only to the Saturn Nebula (NGC 7009)."""
+    found = resolve.resolve(text)
+    assert (found[0].matched_id, found[0].object_type, found[0].body) == (name, kind, name)
+    assert len(found) == 3  # SIMBAD's matches for the same text follow
+    assert routes == [("simbad", text.strip())]
+
+
+def test_planet_alone_when_nothing_else_matches(monkeypatch):
+    def nothing(text):
+        raise resolve.ResolveError("no")
+    monkeypatch.setattr(resolve, "_named", nothing)
+    assert [t.matched_id for t in resolve.resolve("Neptune")] == ["Neptune"]
+
+
+def test_saturn_nebula_is_not_the_planet(routes):
+    assert all(not t.body for t in resolve.resolve("Saturn Nebula"))
+
+
 def test_empty_input():
     with pytest.raises(resolve.ResolveError):
         resolve.resolve("   ")

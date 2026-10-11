@@ -5,6 +5,8 @@
 - Several products in one filter are listed together and count once (REQ-53, S-16).
 - A set is shown only with at least `min_filters` distinct filters (REQ-07, REQ-10).
 - Images on one pixel grid in two or more filters are marked as a matched group (REQ-60).
+- Planets and moons (REQ-80): only images of one visit form a set, because the body moves, rotates and changes;
+  the set's name ends in the visit, and sets with the same filter count are listed newest first.
 """
 from __future__ import annotations
 
@@ -49,6 +51,9 @@ class ColourSet:
     grids: list[GridGroup] = field(default_factory=list)
     # REQ-71 off-centre sets: offset_arcmin, direction, area_arcmin2, ra, dec of the shared area; None otherwise.
     position: dict | None = None
+    # REQ-80 planet and moon sets: the visit, e.g. "jw01247-o301", and the date of its first image.
+    visit: str = ""
+    date: str = ""
 
     @property
     def readiness(self) -> str:
@@ -74,7 +79,8 @@ class ColourSet:
         return {"name": self.name, "instruments": self.instruments, "readiness": self.readiness,
                 "coverage": self.coverage,
                 "warnings": self.warnings, "rows": [r.to_dict() for r in self.rows],
-                "grids": [g.to_dict() for g in self.grids], "position": self.position}
+                "grids": [g.to_dict() for g in self.grids], "position": self.position,
+                "visit": self.visit, "date": self.date}
 
 
 def _grid_groups(rows: list[FilterRow]) -> list[GridGroup]:
@@ -117,7 +123,7 @@ def build_sets(products: list[Product], *, min_filters: int = 3, mix_instruments
 
     groups: dict[str, list[Product]] = defaultdict(list)
     for p in keep:
-        groups["all" if mix_instruments else f"{p.archive}|{p.instrument}"].append(p)
+        groups[("all" if mix_instruments else f"{p.archive}|{p.instrument}") + f"|{p.visit}"].append(p)
 
     sets = []
     for members in groups.values():
@@ -132,12 +138,16 @@ def build_sets(products: list[Product], *, min_filters: int = 3, mix_instruments
             r.products.sort(key=lambda p: p.obs_date, reverse=True)
             r.products.sort(key=lambda p: p.exptime_s or 0, reverse=True)
         instruments = sorted({f"{p.instrument}" for p in members})
-        cs = ColourSet(set_name(instruments, rows), instruments, rows, grids=_grid_groups(rows))
+        visit = members[0].visit
+        name = set_name(instruments, rows) + (f"_{visit}" if visit else "")
+        date = min((p.obs_date for p in members if p.obs_date), default="") if visit else ""
+        cs = ColourSet(name, instruments, rows, grids=_grid_groups(rows), visit=visit, date=date)
         if mix_instruments:
             scales = [p.pixel_scale_arcsec for p in members if p.pixel_scale_arcsec]
             if scales and max(scales) / min(scales) > pixel_scale_warn_ratio:  # REQ-26: warn, don't block
                 cs.warnings.append(f"Pixel scales differ by {max(scales) / min(scales):.0f}× "
                                    f"({min(scales):g}″ to {max(scales):g}″).")
         sets.append(cs)
+    sets.sort(key=lambda s: s.date, reverse=True)  # newest first among equals (only planet sets have a date)
     sets.sort(key=lambda s: -len(s.rows))
     return sets

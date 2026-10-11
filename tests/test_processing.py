@@ -139,6 +139,14 @@ def test_process_cutout_keeps_object_at_same_sky_position(tmp_path):
     assert np.isfinite(r.data).all()
 
 
+def test_planets_are_never_cut(tmp_path):
+    """REQ-81: a planet's Target position is a placeholder, so there is nothing to cut around."""
+    data = np.random.default_rng(1).normal(10, 1, (200, 300)).astype(np.float32)
+    saturn = Target(query="saturn", matched_id="Saturn", ra=0.0, dec=0.0, body="Saturn")
+    r = process(raw_fetched(tmp_path, data), _product(), saturn, Options(cutout=True, box_arcmin=1.0))
+    assert r.data.shape == (200, 300)
+
+
 def test_header_content(tmp_path):
     data = np.ones((50, 50), dtype=np.float32)
     data[20:22, 20:22] = np.nan

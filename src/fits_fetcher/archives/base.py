@@ -24,6 +24,7 @@ class Target:
     object_type: str = ""
     size_arcmin: float | None = None
     note: str = ""  # e.g. why the size is unknown (REQ-77)
+    body: str = ""  # a planet or moon (REQ-78): searched by name, ra/dec unused
 
 
 @dataclass
@@ -66,6 +67,7 @@ class Product:
     # REQ-75: footprints of every image the search found on this image's grid, set when a download starts, so
     # all of them are trimmed to the same box.
     grid_regions: list[str] = field(default_factory=list)
+    visit: str = ""                     # planets and moons (REQ-80): only images of one visit form a set
 
     @property
     def key(self) -> str:

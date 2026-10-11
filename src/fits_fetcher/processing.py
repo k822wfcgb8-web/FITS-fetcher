@@ -283,7 +283,7 @@ def process(f: Fetched, product: Product, target: Target, options: Options, grid
 
     wcs = _wcs(f.header)
     box, clipped = f.box, f.box_clipped
-    if options.cutout and box is None:
+    if options.cutout and box is None and not target.body:  # a planet has no fixed position (REQ-81)
         try:
             box, clipped = footprint.pixel_box(f.header, target.ra, target.dec, options.box_arcmin, data.shape)
         except ValueError as e:

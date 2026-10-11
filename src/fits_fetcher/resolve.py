@@ -7,6 +7,8 @@
   'NAME …' identifiers that start with the typed text. Verification step 04 found that contains-anywhere
   matching takes minutes, that SIMBAD's ADQL lacks LOWER/UPPER/ILIKE, and that OR-ing case variants in one
   query is slow, so each case variant is a separate starts-with query.
+- Planets and major moons (REQ-78) aren't in SIMBAD: 'saturn' matched only 'NAME Saturn Nebula' (NGC 7009). A
+  body's name is listed first, with SIMBAD's matches for the same text after it.
 - SIMBAD calls give up after 15 s (REQ-77): on 2026-10-11 SIMBAD stopped answering and "Find object" hung. Once
   SIMBAD has failed, the lookup carries on with Sesame's position alone (Sesame has its own mirror and time limit).
 """
@@ -22,6 +24,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.coordinates.name_resolve import NameResolveError
 
+from fits_fetcher import solar
 from fits_fetcher.archives.base import Target
 
 log = logging.getLogger(__name__)
@@ -154,6 +157,18 @@ def resolve(text: str) -> list[Target]:
     coords = parse_coordinates(text)
     if coords:
         return [coords]
+    planet = solar.body(text)
+    if planet:
+        try:
+            others = _named(text)
+        except ResolveError:
+            others = []
+        return [planet] + others
+    return _named(text)
+
+
+def _named(text: str) -> list[Target]:
+    """Objects outside the Solar System called `text`, from Sesame and SIMBAD."""
     if _DESIGNATION.match(text):
         # A designation names one object; a starts-with search would also match e.g. 'M51 OT2019-1'.
         return [sesame(text)]

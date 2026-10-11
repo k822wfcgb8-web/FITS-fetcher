@@ -22,6 +22,11 @@ Selection rules come from verification steps 01, 05 and 07 (verify/FINDINGS.md) 
   disc, capped at INSIDE_MAX_RADIUS_DEG. Off-centre candidates always include HST mosaics (most same-grid groups
   away from the centre exist only as mosaics; M35, verification step 16) and are cut to the area their filters
   share: single-visit images are fetched whole and cut, mosaics only for the rows of that area.
+- Planets and moons (REQ-79, verification step 18) are found by target name, not position: every public moving
+  target whose name starts with the body's name ('SATURN-MAPS', 'SATURN-CENTRE'). Pan-STARRS is skipped. Hubble
+  makes no Advanced Products for moving targets, so classic products are offered, including drizzled single
+  exposures (Saturn: 1,450 of 1,458 Hubble images). Their file address is the archive's own dataURL (NICMOS has
+  _mos, not _drz). Each image carries its visit, because only one visit's images form a set (REQ-80).
 """
 from __future__ import annotations
 
@@ -111,6 +116,16 @@ def grid_key(collection: str, filt: str, obs_id: str) -> str:
     return f"HST visit {parts[1]}_{parts[2]} {'/'.join(rest).upper()}"
 
 
+def visit_key(collection: str, obs_id: str) -> str:
+    """The visit an image belongs to (REQ-80): 'jw01247-o301' for JWST, 'iemr40' (ipppss) for classic HST."""
+    o = obs_id.lower()
+    if collection == "JWST":
+        return o.split("_")[0]
+    if o.startswith("hst_"):
+        return "_".join(o.split("_")[:3])
+    return o[:6]
+
+
 def ps1_cell(obs_id: str) -> str:
     """Projection cell of a PS1 skycell ID: 'rings.v3.skycell.0994.022.stk.r' → '0994'."""
     return obs_id.split(".")[3]
@@ -183,13 +198,25 @@ class MastArchive(Archive):
         except Exception as e:
             raise ArchiveError(f"MAST search failed: {e}") from e
 
-    def _selected(self, row, collections: list[str], mosaics: bool | None = None) -> bool:
+    def _body_query(self, body: str, collections: list[str]):
+        """REQ-79: public moving-target images whose target name starts with the body's name."""
+        try:
+            return Observations.query_criteria(
+                target_name=f"{body.upper()}*", mtFlag=True, obs_collection=collections, dataproduct_type="image",
+                calib_level=[3], intentType="science", dataRights="PUBLIC")
+        except Exception as e:
+            raise ArchiveError(f"MAST search failed: {e}") from e
+
+    def _selected(self, row, collections: list[str], mosaics: bool | None = None, moving: bool = False) -> bool:
         coll = _text(row["obs_collection"])
         return (coll in collections and _allowed(coll, _text(row["instrument_name"]))
-                and self._wanted_family(row, mosaics) and bool(filters.effective_filter(_text(row["filters"]))))
+                and self._wanted_family(row, mosaics, moving) and bool(filters.effective_filter(_text(row["filters"]))))
 
     def search(self, target: Target, radius_deg: float) -> list[Product]:
         pointed = [c for c in self._collections() if c != "PS1"]
+        if target.body:
+            rows = self._body_query(target.body, pointed) if pointed else []
+            return [self._product(r, target, moving=True) for r in rows if self._selected(r, pointed, moving=True)]
         with ThreadPoolExecutor(2) as pool:  # the two queries run side by side: MAST answers in 3-35 s
             ps1 = pool.submit(self._ps1_products, target) if "PS1" in self._collections() else None
             rows = self._query(target, radius_deg, pointed) if pointed else []
@@ -290,14 +317,17 @@ class MastArchive(Archive):
                                      collection=_text(rs[0]["obs_collection"])))
         return found
 
-    def _wanted_family(self, row, mosaics: bool | None = None) -> bool:
-        """REQ-58 product families; `mosaics` overrides the "Also show HST mosaics" switch (REQ-71)."""
+    def _wanted_family(self, row, mosaics: bool | None = None, moving: bool = False) -> bool:
+        """REQ-58 product families; `mosaics` overrides the "Also show HST mosaics" switch (REQ-71). Moving
+        targets have only classic products, which are then offered (REQ-79)."""
         if _text(row["obs_collection"]) != "HST":
             return True
         obs_id = _text(row["obs_id"]).lower()
         if "_total_" in obs_id or obs_id.endswith("_coarse-all"):
             return False
         family = hst_family(obs_id)
+        if moving:
+            return family != "mosaic"
         show_mosaics = self.settings.hst_show_mosaics if mosaics is None else mosaics
         return family == "single-visit" or (family == "mosaic" and show_mosaics)
 
@@ -402,7 +432,7 @@ class MastArchive(Archive):
                 "each piece linear before stitching.")
         return Fetched(fits.Header(), canvas, paths[0], files=paths, stitch=stitch, notes=[note])
 
-    def _product(self, o, target: Target, coverage: bool = True) -> Product:
+    def _product(self, o, target: Target, coverage: bool = True, moving: bool = False) -> Product:
         coll = _text(o["obs_collection"])
         inst = _text(o["instrument_name"])
         obs_id = _text(o["obs_id"])
@@ -413,11 +443,14 @@ class MastArchive(Archive):
             wl = (lo + hi) / 2000
         t_min = _float(o["t_min"])
         url = file_url(coll, inst, obs_id)
+        classic = coll == "HST" and hst_family(obs_id) == "classic"
+        if classic and _text(o["dataURL"]).endswith(".fits"):
+            url = _http(_text(o["dataURL"]))
         mosaic = coll == "HST" and hst_family(obs_id) == "mosaic"
         scale = MOSAIC_PIXEL_SCALE if mosaic else _pixel_scale(inst, wl)
         c_ra, c_dec = _float(o["s_ra"]), _float(o["s_dec"])
         offset = (footprint.angular_sep_deg(c_ra, c_dec, target.ra, target.dec) * 60
-                  if c_ra is not None and c_dec is not None else None)
+                  if c_ra is not None and c_dec is not None and not moving else None)
 
         # Download estimates (S-26) for the science array only (REQ-57), as float32.
         if mosaic:  # only the rows of the box around the object, each a full skycell row
@@ -431,6 +464,9 @@ class MastArchive(Archive):
             area = footprint.area_deg2(_text(o["s_region"]))
             size = int(area * (3600 / scale) ** 2 * 4) if area and scale else None
             level = "HST single-visit " + url.rsplit("_", 1)[-1][:3] if coll == "HST" else "JWST i2d"
+            if classic:  # ipppssoot: an association ends in a digit, a single exposure in a letter
+                kind = "combined" if obs_id[-1:].isdigit() else "single exposure"
+                level = f"HST {kind} {url.rsplit('_', 1)[-1][:3]}"
             width = None
         return Product(
             archive=self.name, collection=coll, telescope={"PS1": "Pan-STARRS1"}.get(coll, coll), instrument=inst,
@@ -441,6 +477,6 @@ class MastArchive(Archive):
             centre_ra=c_ra, centre_dec=c_dec, offset_arcmin=offset, grid=grid_key(coll, filt, obs_id),
             thumbnail_url=_http(_text(o["jpegURL"])), science_extension=1 if coll == "PS1" else "SCI",
             coverage=(footprint.coverage([_text(o["s_region"])], target.ra, target.dec, target.size_arcmin)
-                      if coverage else None),
-            region=_text(o["s_region"]),
+                      if coverage and not moving else None),
+            region=_text(o["s_region"]), visit=visit_key(coll, obs_id) if moving else "",
         )

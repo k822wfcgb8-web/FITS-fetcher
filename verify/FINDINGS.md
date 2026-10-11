@@ -256,3 +256,29 @@ The duplicate step only drops copies of the same exposures. The centre rule remo
 **Grid partners don't share an exact WCS.** F336W and F450W share CRPIX and CRVAL, but their PC matrices differ (PC1_1 −1.26428e-5 vs −1.26456e-5, about 0.4 px across the field). A footprint box worked out in each file came out 3722 vs 3721 rows, which would shift one filter by a pixel. So the first image on a grid records its box relative to the reference pixel (`FFGRID`, `FFTRIMBX`), and partners reuse it, from the same download or from saved files in the object's folder.
 
 **Result** (`17_blank_borders.py`, the filters downloaded in separate jobs): both outputs 4512 × 3721 px with identical NAXIS, CRPIX and CRVAL; 47% blank with the warning on the row and in HISTORY; compatibility check ok; both load in siril-cli (exit 0).
+
+## 18 — Planets and moons (REQ-78 to REQ-81), Saturn, 2026-10-11
+
+**Problem.** Searching 'saturn' offered only NGC 7009. SIMBAD lists no Solar System bodies, and its nearest name match is 'NAME Saturn Nebula'. Even with Saturn's position, a position search can't work: the planet moves, so each image points somewhere else.
+
+**The article's data.** Sky at Night's JWST Saturn (processed by J. DePasquale, STScI) is programme 1247, target `SATURN-CENTRE`, NIRCam, 24–25 June 2023. It has two public visits, `jw01247-o301` and `jw01247-o341`, each with F150W2, F212N, F322W2 and F322W2+F323N (shown as F323N). A newer JWST Saturn programme (7847, target `Saturn`) is still exclusive access.
+
+**Finding planets in MAST.** Target names vary: `SATURN`, `SATURN-MAPS`, `SATURN-2`, `SATURN07`, `SATURN-CENTRE`, `SATURN+63N-FEATURE`, `JUPITER+GANYMEDE`. A query for target name `SATURN*` with the moving-target flag (`mtFlag`), level 3, public, Hubble + JWST, answers in 0.7–3 s:
+
+| Body | Images (allowed instruments) | Visits with 3+ filters |
+|---|---|---|
+| Saturn | 1,466 | 130 (2 JWST, 2 NICMOS combined, 126 Hubble single-exposure) |
+| Jupiter | 3,364 | 327 (5 JWST) |
+| Neptune | 2,843 | 177 (0 JWST) |
+
+The Moon, Venus and Mercury return no moving-target images.
+
+**Hubble products.** Hubble Advanced Products (`hst_…`) aren't made for moving targets, so every planet image is a classic product. Almost all are **single exposures** drizzled on their own (`iemr40b7q_drz.fits`; obs IDs ending in a letter), not associations (ending in a digit): for Saturn, 1,450 of 1,458 Hubble images, median 30 s. NICMOS combined products end in `_mos.fits`, so the archive's own `dataURL` is used for classic files instead of a built address.
+
+**Result** (`18_planets.py`). 'saturn' → Saturn (Planet), NGC 7009 (PN). The search finds 1,466 images in 3.3 s and builds 130 sets of 3+ filters, one per visit. Both JWST 1247 visits appear with 4 filters. Downloaded all four filters of `jw01247-o301` (4338 × 4315 px short-wave, 2072 × 2063 px long-wave) and F395N, F502N and F631N of Hubble visit `iemr40` (2022-09-22, 2058 × 2176 px). All seven were left uncut although cutout was on, pass the compatibility check and load in siril-cli.
+
+**What the images show.**
+- **Hubble:** Saturn and its rings are clean in all three filters. F631N has 26 pixels below −100 (cosmic rays in a single exposure).
+- **JWST F323N:** the dark planet with bright rings from the article.
+- **JWST F150W2 and F322W2:** the disc is **saturated** in the archive's own files, so it's blank, with strong diffraction spikes and scattered light. F150W2 also shows the short-wave chip gaps.
+- **Star-core repair:** it touched only small holes (160–482 regions, 201–3185 px) and left the planet's disc alone (far above the limits).

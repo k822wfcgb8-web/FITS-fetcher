@@ -141,22 +141,33 @@ function showCandidates(targets) {
   const list = $("candidate-list");
   list.replaceChildren(...targets.map((t) => el("li", {},
     el("button", { type: "button", onclick: () => { $("candidates").hidden = true; setTarget(t); } },
-      `${t.matched_id}`, el("span", { class: "muted" }, `  ${t.object_type || ""}  ${fmt.deg(t.ra, t.dec)}`)))));
+      `${t.matched_id}`, el("span", { class: "muted" }, `  ${t.object_type || ""}  ${where(t)}`)))));
   $("candidates").hidden = false;
 }
+
+// A planet or moon (REQ-78) has no fixed position: it is searched by name.
+function where(t) { return t.body ? "Solar System · moves across the sky" : fmt.deg(t.ra, t.dec); }
 
 function setTarget(t) {
   state.target = t;
   $("search").disabled = !t;
   if (!t) { $("target").hidden = true; return; }
   const size = t.size_arcmin ? `, size ≈ ${(+t.size_arcmin).toFixed(1)}′` : "";
-  $("target").replaceChildren(
+  $("target").replaceChildren(...[
     el("strong", {}, t.matched_id), " ",
-    el("span", { class: "muted" }, `${t.object_type ? `(${t.object_type}) ` : ""}${fmt.deg(t.ra, t.dec)}${size}`),
+    el("span", { class: "muted" }, `${t.object_type ? `(${t.object_type}) ` : ""}${where(t)}${size}`),
     el("div", { class: "muted" }, `You typed “${t.query}”. Check this is the object you meant before searching.`),
-    t.note ? el("div", { class: "warning target-note" }, `⚠ ${t.note}`) : null);
+    t.body ? el("div", { class: "muted" }, `Searched by name in Hubble and JWST; each set holds the filters of one visit.`) : null,
+    t.note ? el("div", { class: "warning target-note" }, `⚠ ${t.note}`) : null].filter(Boolean));
   $("target").hidden = false;
-  $("opt-cutout-label").textContent = `Cut around the object (${cutoutBox(t).toFixed(1)}′ box)`;
+  cutoutLabel(t);
+}
+
+// REQ-81: planets and moons are kept whole; there is no fixed position to cut around.
+function cutoutLabel(t) {
+  $("opt-cutout").disabled = !!t.body;
+  $("opt-cutout-label").textContent = t.body ? "Cut around the object (not for planets and moons)"
+    : `Cut around the object (${cutoutBox(t).toFixed(1)}′ box)`;
 }
 
 // REQ-25/REQ-58: 2× the object's size, or the default box when the size is unknown.
@@ -178,6 +189,7 @@ $("search").addEventListener("click", () => {
   });
   if (!$("telescope-boxes").hidden) params.set("telescopes", checked("#telescope-boxes input").join(","));
   if (t.size_arcmin) params.set("size_arcmin", t.size_arcmin);
+  if (t.body) params.set("body", t.body);
 
   $("archive-status").replaceChildren();
   $("results").replaceChildren();
@@ -278,6 +290,12 @@ function showElsewhere(data) {
   updateSelection();
 }
 
+function setVisit(set) {
+  if (!set.visit) return null;
+  return el("span", { class: "chip", title: "Only images from this one visit are in the set (REQ-80)" },
+    `Visit ${set.visit}${set.date ? ` · ${set.date}` : ""}`);
+}
+
 function setPosition(set) {
   if (!set.position) return null;
   const p = set.position;
@@ -353,10 +371,10 @@ function renderSet(set) {
   for (const row of set.rows) for (const p of row.products) sources.set(`${p.archive}|${p.collection}`, p);
   const heading = [...sources.values()].flatMap((p, i) => [i ? " + " : "", ...source(p.archive, p.collection)]);
   return el("details", { class: "set", open: true },
-    // An off-centre set's folder name ends in its position, which the position chip shows instead.
+    // An off-centre set's folder name ends in its position, a planet set's in its visit; their chips show those.
     el("summary", {}, el("span", { class: "set-name" }, ...heading, " · ",
-      (set.position ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
-      el("span", { class: "muted" }, set.readiness), setPosition(set), setCoverage(set), allBtn),
+      (set.position || set.visit ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
+      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), allBtn),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
     el("div", { class: "table-wrap" }, el("table", {},
@@ -668,7 +686,7 @@ function applySavedSettings(old, now) {
   if (changed("hst_show_mosaics")) $("hst-mosaics").checked = now.hst_show_mosaics;
   if (changed("star_repair")) $("opt-repair").checked = now.star_repair;
   if (changed("cutout")) $("opt-cutout").checked = now.cutout;
-  if (state.target) $("opt-cutout-label").textContent = `Cut around the object (${cutoutBox(state.target).toFixed(1)}′ box)`;
+  if (state.target) cutoutLabel(state.target);
   updateSelection();
 }
 

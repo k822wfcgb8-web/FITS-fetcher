@@ -16,6 +16,17 @@ def test_one_set_per_instrument_with_min_filters(product):
     assert acs.name == "ACS-WFC_F435W-F555W-F658N-F814W"
 
 
+def test_planet_sets_hold_one_visit_each_newest_first(product):
+    """REQ-80: the planet moves and rotates between visits, so visits never mix."""
+    old = [product(f, "WFC3/UVIS", visit="idg235", date="2018-06-06") for f in ("F395N", "F502N", "F631N")]
+    new = [product(f, "WFC3/UVIS", visit="iemr40", date="2023-09-22") for f in ("F395N", "F502N", "F631N")]
+    one = [product("F275W", "WFC3/UVIS", visit="ict902", date="2015-01-01")]
+    sets = build_sets(old + new + one, min_filters=3)
+    assert [(s.visit, s.date) for s in sets] == [("iemr40", "2023-09-22"), ("idg235", "2018-06-06")]
+    assert sets[0].name == "WFC3-UVIS_F395N-F502N-F631N_iemr40"
+    assert build_sets(old + new, min_filters=3, mix_instruments=True)[0].visit == "iemr40"
+
+
 def test_same_filter_products_share_a_row_deepest_first(product):
     acs = build_sets(acs_and_ps1(product), min_filters=3)[0]
     f814 = next(r for r in acs.rows if r.filter == "F814W")
