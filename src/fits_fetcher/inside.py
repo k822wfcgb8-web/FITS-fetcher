@@ -13,11 +13,10 @@ from __future__ import annotations
 import logging
 import re
 
-import pyvo
 
 from fits_fetcher import filters, footprint
 from fits_fetcher.archives.base import InsideGroup, InsideObject, Target
-from fits_fetcher.resolve import SIMBAD_TAP
+from fits_fetcher.resolve import simbad
 
 log = logging.getLogger(__name__)
 SAME_OBJECT_ARCSEC = 10   # a known object this close to the searched centre is the searched object
@@ -52,7 +51,7 @@ def lookup(names: list[str]) -> dict[str, tuple[str, float, float]]:
     if not names:
         return {}
     ids = ", ".join("'" + n.replace("'", "''") + "'" for n in names)
-    rows = pyvo.dal.TAPService(SIMBAD_TAP).search(
+    rows = simbad().search(
         f"SELECT i.id, b.main_id, b.ra, b.dec FROM ident AS i JOIN basic AS b ON b.oid = i.oidref WHERE i.id IN ({ids})")
     return {norm(str(r["id"])): (str(r["main_id"]), float(r["ra"]), float(r["dec"]))
             for r in rows if r["ra"] is not None and str(r["ra"]) != "--"}

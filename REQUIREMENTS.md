@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.13 (approved)
+**Version:** 1.14 (approved)
 **Date:** 2026-10-11
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -81,6 +81,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | REQ-18 | *(Resolved Q-07)* When a name could match more than one object, the app **lists the candidates** (identifier, object type, coordinates) and the user picks one before the search runs. |
 | REQ-13 | *(Resolved Q-06)* Beyond Messier, NGC and IC, **any designation the name resolver recognises** is accepted; there is no fixed catalogue list and no built-in lookup table in version 1. If the resolver doesn't recognise a name, the user is told so and can enter RA/Dec instead (S-11). |
 | REQ-14 | *(Resolved Q-08)* An image counts as covering the object only if its footprint **contains the object's resolved centre coordinates**. Images of a large object that miss its centre are offered separately as off-centre sets (REQ-71). |
+| REQ-77 | *(Resolved Q-63, after "Helix Nebula" hung on 2026-10-11 while SIMBAD wasn't answering)* Every SIMBAD query **gives up after 15 s**. Once SIMBAD has failed, the lookup stops asking it and uses **Sesame's position** alone (Sesame has its own mirror and time limit). The object panel then notes that the size is unknown, so whole-object boxes, off-centre sets and the 'Also inside' list aren't available for that search. |
 | S-12 ✅ | Search radius is set automatically from the object's apparent size when known, with a manual override. |
 
 
@@ -319,6 +320,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-60~~ | Where telescope names link to it: **resolved → tick boxes and results (REQ-74)** | — |
 | ~~Q-61~~ | Mostly blank images (NGC 3675 WFPC2: 56% blank, so STF's median and spread were 0): **resolved → trim to the data and warn above 30% blank (REQ-75, REQ-76)** | — |
 | ~~Q-62~~ | Trimming images on a shared grid: **resolved → one box from the grid's archive footprints plus 16 px (REQ-75)** | — |
+| ~~Q-63~~ | Name lookup hung while SIMBAD wasn't answering: **resolved → 15 s limit, then Sesame's position with a note (REQ-77)** | — |
 
 ---
 
@@ -350,3 +352,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.11 | 2026-10-11 | Added and resolved Q-53–Q-57 after the M35 search: off-centre same-grid colour sets in large objects (REQ-71); REQ-14 note. |
 | 1.12 | 2026-10-11 | Added and resolved Q-58–Q-60 after the NGC 3675 download: MAST telescope tick boxes (REQ-72), telescope named on sets and rows (REQ-73), telescope fact-sheet pop-ups (REQ-74). |
 | 1.13 | 2026-10-11 | Added and resolved Q-61–Q-62 after NGC 3675's WFPC2 pair stretched to grey: trim the blank border (REQ-75), warn when still mostly blank (REQ-76); REQ-41 order updated. |
+| 1.14 | 2026-10-11 | Added and resolved Q-63 after a name lookup hung during a SIMBAD outage: 15 s SIMBAD limit with Sesame fallback (REQ-77). |

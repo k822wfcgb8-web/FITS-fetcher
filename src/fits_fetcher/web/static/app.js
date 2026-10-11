@@ -153,7 +153,8 @@ function setTarget(t) {
   $("target").replaceChildren(
     el("strong", {}, t.matched_id), " ",
     el("span", { class: "muted" }, `${t.object_type ? `(${t.object_type}) ` : ""}${fmt.deg(t.ra, t.dec)}${size}`),
-    el("div", { class: "muted" }, `You typed “${t.query}”. Check this is the object you meant before searching.`));
+    el("div", { class: "muted" }, `You typed “${t.query}”. Check this is the object you meant before searching.`),
+    t.note ? el("div", { class: "warning target-note" }, `⚠ ${t.note}`) : null);
   $("target").hidden = false;
   $("opt-cutout-label").textContent = `Cut around the object (${cutoutBox(t).toFixed(1)}′ box)`;
 }

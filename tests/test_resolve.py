@@ -24,7 +24,7 @@ def test_names_are_not_coordinates(text):
 def routes(monkeypatch):
     calls = []
     t = Target(query="q", matched_id="X", ra=1.0, dec=2.0)
-    monkeypatch.setattr(resolve, "sesame", lambda text: calls.append(("sesame", text)) or t)
+    monkeypatch.setattr(resolve, "sesame", lambda text, details=True: calls.append(("sesame", text)) or t)
     monkeypatch.setattr(resolve, "candidates", lambda text: calls.append(("simbad", text)) or [t, t])
     return calls
 
@@ -43,3 +43,38 @@ def test_common_names_get_candidates(routes):
 def test_empty_input():
     with pytest.raises(resolve.ResolveError):
         resolve.resolve("   ")
+
+
+# ---------- SIMBAD not answering (REQ-77) ----------
+@pytest.fixture
+def silent_simbad(monkeypatch):
+    """A local server that accepts connections and never answers, like SIMBAD on 2026-10-11."""
+    import socket
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(5)
+    monkeypatch.setattr(resolve, "SIMBAD_TAP", f"http://127.0.0.1:{srv.getsockname()[1]}/tap")
+    monkeypatch.setattr(resolve, "SIMBAD_TIMEOUT_S", 1)
+    yield
+    srv.close()
+
+
+def test_silent_simbad_gives_up_after_the_time_limit(silent_simbad):
+    import time
+    t0 = time.monotonic()
+    with pytest.raises(resolve.SimbadUnavailable):
+        resolve.candidates("Helix Nebula")
+    assert time.monotonic() - t0 < 5  # one query, one time limit: no second case variant tried
+
+
+def test_common_name_falls_back_to_sesame_without_details(silent_simbad, monkeypatch):
+    from astropy.coordinates import SkyCoord
+    monkeypatch.setattr(SkyCoord, "from_name", classmethod(lambda cls, name: SkyCoord(337.41, -20.84, unit="deg")))
+    (t,) = resolve.resolve("Helix Nebula")
+    assert (t.ra, t.dec) == pytest.approx((337.41, -20.84)) and t.size_arcmin is None
+    assert "SIMBAD didn't answer" in t.note
+
+
+def test_details_lookup_failure_leaves_a_note(silent_simbad):
+    t = resolve._with_simbad_details(Target(query="NGC 7293", matched_id="NGC 7293", ra=337.41, dec=-20.84))
+    assert t.matched_id == "NGC 7293" and "size is unknown" in t.note

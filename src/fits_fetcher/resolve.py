@@ -7,13 +7,17 @@
   'NAME …' identifiers that start with the typed text. Verification step 04 found that contains-anywhere
   matching takes minutes, that SIMBAD's ADQL lacks LOWER/UPPER/ILIKE, and that OR-ing case variants in one
   query is slow, so each case variant is a separate starts-with query.
+- SIMBAD calls give up after 15 s (REQ-77): on 2026-10-11 SIMBAD stopped answering and "Find object" hung. Once
+  SIMBAD has failed, the lookup carries on with Sesame's position alone (Sesame has its own mirror and time limit).
 """
 from __future__ import annotations
 
 import logging
 import re
+from dataclasses import replace
 
 import pyvo
+import requests
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.coordinates.name_resolve import NameResolveError
@@ -23,6 +27,9 @@ from fits_fetcher.archives.base import Target
 log = logging.getLogger(__name__)
 SIMBAD_TAP = "https://simbad.cds.unistra.fr/simbad/sim-tap"
 MAX_CANDIDATES = 20
+SIMBAD_TIMEOUT_S = 15
+NO_SIMBAD_NOTE = ("SIMBAD didn't answer, so this object's size is unknown: the search can't show whole-object boxes, "
+                  "off-centre sets or other objects inside it. Try again later for those.")
 
 _COORDS = re.compile(r"^\s*[-+]?\d")
 # Catalogue designations: letters then a number, e.g. M51, M 51, NGC 5194, IC 434, Sh2-155, HD 1234.
@@ -31,6 +38,27 @@ _DESIGNATION = re.compile(r"^\s*[A-Za-z][A-Za-z0-9]{0,7}[\s-]*\d")
 
 class ResolveError(Exception):
     """The name couldn't be resolved; the user should enter RA/Dec instead (REQ-13)."""
+
+
+class SimbadUnavailable(Exception):
+    """SIMBAD failed or didn't answer within SIMBAD_TIMEOUT_S."""
+
+
+class _TimeoutSession(requests.Session):
+    """A requests session with a default time limit; pyvo's TAP calls have none of their own."""
+
+    def __init__(self, timeout: float):
+        super().__init__()
+        self.timeout = timeout
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", self.timeout)
+        return super().request(method, url, **kwargs)
+
+
+def simbad() -> pyvo.dal.TAPService:
+    """SIMBAD's TAP service, giving up after SIMBAD_TIMEOUT_S (REQ-77)."""
+    return pyvo.dal.TAPService(SIMBAD_TAP, session=_TimeoutSession(SIMBAD_TIMEOUT_S))
 
 
 def parse_coordinates(text: str) -> Target | None:
@@ -61,8 +89,9 @@ def _escape(s: str) -> str:
 
 
 def candidates(text: str, service: pyvo.dal.TAPService | None = None) -> list[Target]:
-    """SIMBAD objects with a 'NAME …' identifier starting with `text` (as typed, and in Title Case)."""
-    service = service or pyvo.dal.TAPService(SIMBAD_TAP)
+    """SIMBAD objects with a 'NAME …' identifier starting with `text` (as typed, and in Title Case).
+    Raises SimbadUnavailable at the first failure, without trying the other case variant."""
+    service = service or simbad()
     found: dict[str, Target] = {}
     for variant in dict.fromkeys([text.strip(), text.strip().title()]):
         q = (f"SELECT TOP {MAX_CANDIDATES} main_id, otype, ra, dec, galdim_majaxis "
@@ -70,9 +99,9 @@ def candidates(text: str, service: pyvo.dal.TAPService | None = None) -> list[Ta
              f"WHERE ident.id LIKE 'NAME {_escape(variant)}%'")
         try:
             rows = service.run_sync(q).to_table()
-        except Exception as e:  # network or service error: fall back to Sesame only
+        except Exception as e:  # network or service error: the caller falls back to Sesame only
             log.warning("SIMBAD candidate search failed for %r: %s", variant, e)
-            continue
+            raise SimbadUnavailable(str(e)) from e
         for r in rows:
             main_id = " ".join(str(r["main_id"]).split())
             if main_id in found or _masked(r["ra"]) or _masked(r["dec"]):
@@ -87,18 +116,20 @@ def _masked(v) -> bool:
     return v is None or getattr(v, "mask", False) is True or str(v) in ("--", "nan")
 
 
-def sesame(text: str) -> Target:
+def sesame(text: str, details: bool = True) -> Target:
+    """Sesame's position for `text`, with SIMBAD's details unless SIMBAD has already failed (`details` False)."""
     try:
         c = SkyCoord.from_name(text)
     except NameResolveError as e:
         raise ResolveError(f"No object called '{text}' was found. You can enter RA and Dec instead.") from e
-    return _with_simbad_details(Target(query=text, matched_id=text, ra=float(c.ra.deg), dec=float(c.dec.deg)))
+    t = Target(query=text, matched_id=text, ra=float(c.ra.deg), dec=float(c.dec.deg))
+    return _with_simbad_details(t) if details else replace(t, note=NO_SIMBAD_NOTE)
 
 
 def _with_simbad_details(t: Target, service: pyvo.dal.TAPService | None = None) -> Target:
     """Add SIMBAD's main identifier, object type and size (for S-10 and S-12) for the object at Sesame's
-    position. Best effort: on any failure the target is returned unchanged."""
-    service = service or pyvo.dal.TAPService(SIMBAD_TAP)
+    position. Best effort: on any failure the target is returned with a note that its size is unknown."""
+    service = service or simbad()
     q = ("SELECT TOP 1 main_id, otype, galdim_majaxis, "
          f"DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', {t.ra}, {t.dec})) AS dist FROM basic "
          f"WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {t.ra}, {t.dec}, 0.0003)) = 1 ORDER BY dist")
@@ -106,7 +137,7 @@ def _with_simbad_details(t: Target, service: pyvo.dal.TAPService | None = None) 
         rows = service.run_sync(q).to_table()
     except Exception as e:
         log.warning("SIMBAD details lookup failed for %s: %s", t.query, e)
-        return t
+        return replace(t, note=NO_SIMBAD_NOTE)
     if not len(rows):
         return t
     r = rows[0]
@@ -126,7 +157,10 @@ def resolve(text: str) -> list[Target]:
     if _DESIGNATION.match(text):
         # A designation names one object; a starts-with search would also match e.g. 'M51 OT2019-1'.
         return [sesame(text)]
-    found = candidates(text)
+    try:
+        found = candidates(text)
+    except SimbadUnavailable:
+        return [sesame(text, details=False)]
     if found:
         return found
     return [sesame(text)]

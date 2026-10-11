@@ -52,6 +52,7 @@ button.secondary { background: transparent; color: var(--accent); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 .muted { color: var(--muted); }
 .error { color: var(--error); }
+.target-note { margin: 6px 0 0; }
 .target { margin: 12px 0; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--chip); border-radius: 4px; }
 .choices { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .choices button { width: 100%; text-align: left; background: var(--chip); color: var(--text); border-color: var(--border); }

@@ -23,6 +23,7 @@ class Target:
     dec: float
     object_type: str = ""
     size_arcmin: float | None = None
+    note: str = ""  # e.g. why the size is unknown (REQ-77)
 
 
 @dataclass
