@@ -244,3 +244,15 @@ The duplicate step only drops copies of the same exposures. The centre rule remo
 - Both load in siril-cli (`load`, `stat`, exit 0).
 
 **Bug found and fixed.** `hst_13101_b1_wfc3_uvis_*_ic40b1` has only `_drz.fits`, no `_drc.fits`. The `_drc` address built for WFC3/UVIS and ACS/WFC answered HTTP 404. The MAST module now falls back to `_drz` on a 404, and the saved file's HISTORY records the address actually read. This also affected normal results.
+
+## 17 — Mostly blank images and trimming (REQ-75, REQ-76), NGC 3675 WFPC2, 2026-10-11
+
+**Problem.** The F336W and F450W single-visit images of visit 11128_09 (WFPC2) opened as flat grey in PixInsight after Auto Stretch (STF), with no galaxy visible. The MAST thumbnails show plenty of detail.
+
+**Cause.** The L-shaped WFPC2 field sits on a 4512 × 4495 px canvas at 0.0455″/px; **56%** of the pixels are blank (saved as 0, REQ-22). STF works from the median and MAD of all pixels, so both are 0, the midtones balance goes to 0, and every pixel above 0 turns white (the sky noise reads as grey). Computed from the data area alone, the same stretch shows arms, dust lanes and the nucleus. The signal is also faint (counts/s; 99% of F450W below 0.022, peak 71).
+
+**Trimming.** The box around the real data is x 4–4499, y 788–4479 (82% of the canvas); blank pixels drop to **46–47%**, under half, so STF's MAD is no longer 0 (F450W 1.2e-6) and the galaxy shows. The L-shape keeps the rest blank, so REQ-76 warns above 30%. The archive footprint (`s_region`) lands within 3 px of the data box (footprint x 6–4497, y 789–4476).
+
+**Grid partners don't share an exact WCS.** F336W and F450W share CRPIX and CRVAL, but their PC matrices differ (PC1_1 −1.26428e-5 vs −1.26456e-5, about 0.4 px across the field). A footprint box worked out in each file came out 3722 vs 3721 rows, which would shift one filter by a pixel. So the first image on a grid records its box relative to the reference pixel (`FFGRID`, `FFTRIMBX`), and partners reuse it, from the same download or from saved files in the object's folder.
+
+**Result** (`17_blank_borders.py`, the filters downloaded in separate jobs): both outputs 4512 × 3721 px with identical NAXIS, CRPIX and CRVAL; 47% blank with the warning on the row and in HISTORY; compatibility check ok; both load in siril-cli (exit 0).

@@ -223,8 +223,16 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
                           repair_max_area_bright=settings.star_repair_max_area_bright,
                           cutout=req.cutout,
                           box_arcmin=footprint.box_arcmin(target.size_arcmin, settings.cutout_default_arcmin))
-        job = manager.start(target, [Item(known[i.key], i.sets) for i in req.items], options)
+        job = manager.start(target, [Item(_with_grid(known[i.key]), i.sets) for i in req.items], options)
         return job.snapshot()
+
+    def _with_grid(p: Product) -> Product:
+        """REQ-75: the footprints of every image this session's searches found on `p`'s grid, so each is trimmed
+        to the same box."""
+        if not p.grid:
+            return p
+        regions = sorted({q.region for q in known.values() if q.archive == p.archive and q.grid == p.grid and q.region})
+        return replace(p, grid_regions=regions)
 
     def _job(job_id: str):
         job = manager.get(job_id)

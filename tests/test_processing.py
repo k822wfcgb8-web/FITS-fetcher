@@ -210,3 +210,110 @@ def test_output_opens_in_siril(tmp_path):
 def _product():
     from conftest import make_product
     return make_product("F814W")
+
+
+# ---------- trimming the blank border (REQ-75, REQ-76) ----------
+def _region(header, x0, x1, y0, y1) -> str:
+    """An archive footprint (STC-S polygon) around pixels x0..x1, y0..y1 of `header`'s grid."""
+    corners = WCS(header).all_pix2world([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], 0)
+    return "POLYGON ICRS " + " ".join(f"{ra:.12f} {dec:.12f}" for ra, dec in corners)
+
+
+def _l_shape(x0=20, x1=180, y0=30, y1=150) -> np.ndarray:
+    data = np.full((200, 200), np.nan, dtype=np.float32)
+    data[y0:y1, x0:x1] = 5.0
+    data[y0:(y0 + y1) // 2, x0:(x0 + x1) // 2] = np.nan  # a blank quarter, like WFPC2's L
+    return data
+
+
+def test_trim_to_the_data_without_grid_partners(tmp_path):
+    f = raw_fetched(tmp_path, _l_shape())
+    sky = WCS(f.header).all_pix2world([[100, 100]], 0)[0]
+    r = process(f, _product(), TARGET, Options(star_repair=False))
+    assert r.data.shape == (120, 160)
+    assert np.allclose(WCS(r.header).all_world2pix([sky], 0)[0], [80, 70])  # same sky at the same pixel content
+    assert r.header["FFTRIM"] is True and r.header["FFBLANK"] == 25.0       # the blank quarter is left
+    assert not r.warnings                                                   # 25% is under the warning level
+    assert "Trimmed the blank border: kept 160 x 120 px of 200 x 200" in "".join(str(c) for c in r.header["HISTORY"])
+
+
+def test_mostly_blank_image_is_flagged(tmp_path):
+    data = _l_shape()
+    data[30:150, 21:100] = np.nan  # now about half the trimmed box is blank
+    r = process(raw_fetched(tmp_path, data), _product(), TARGET, Options(star_repair=False))
+    assert r.header["FFBLANK"] > 30 and "auto-stretch" in r.warnings[0]
+    assert "auto-stretch" in "".join(str(c) for c in r.header["HISTORY"])
+
+
+def test_grid_partners_get_one_box_from_their_footprints(tmp_path, product):
+    h = wcs_header(200, 200)
+    regions = [_region(h, 20, 179, 30, 149), _region(h, 25, 175, 35, 145)]
+    a = _l_shape()
+    b = _l_shape(x0=30, x1=170, y0=40, y1=140)  # less data, same grid: must still get the same box
+    out = []
+    for i, data in enumerate((a, b)):
+        d = tmp_path / str(i); d.mkdir()
+        p = product("F450W", grid="visit 1", grid_regions=regions)
+        out.append(process(raw_fetched(d, data), p, TARGET, Options(star_repair=False)))
+    assert out[0].data.shape == out[1].data.shape == (120 + 2 * 16, 160 + 2 * 16)
+    assert out[0].header["CRPIX1"] == out[1].header["CRPIX1"] and out[0].header["CRPIX2"] == out[1].header["CRPIX2"]
+    assert not any("registration" in w for r in out for w in r.warnings)
+
+
+def test_grid_box_grows_to_keep_data_outside_the_footprints(tmp_path, product):
+    h = wcs_header(200, 200)
+    p = product("F450W", grid="visit 1", grid_regions=[_region(h, 60, 140, 46, 133)])
+    r = process(raw_fetched(tmp_path, _l_shape()), p, TARGET, Options(star_repair=False))
+    assert r.data.shape == (120, 160)  # the data's own box, bigger than the footprints' box with its margin
+    assert "needs registration" in r.warnings[0]
+
+
+def test_grid_image_without_footprints_is_not_trimmed(tmp_path, product):
+    r = process(raw_fetched(tmp_path, _l_shape()), product("F450W", grid="visit 1"), TARGET, Options(star_repair=False))
+    assert r.data.shape == (200, 200)
+    assert "Not trimmed" in "".join(str(c) for c in r.header["HISTORY"])
+
+
+def test_pan_starrs_boxes_are_not_trimmed(product):
+    assert not Options().for_product(product("r", parts=["a", "b"])).trim
+    assert Options().for_product(product("r")).trim
+
+
+def test_files_made_before_trimming_are_processed_again(tmp_path):
+    path = tmp_path / "old.fits"
+    h = fits.Header([(k, v, c) for k, v, c in Options().cards() if k != "FFTRIM"])
+    fits.PrimaryHDU(np.zeros((2, 2), np.float32), h).writeto(path)
+    assert not existing_matches(path, Options())
+
+
+def test_grid_partners_with_slightly_different_wcs_reuse_the_first_box(tmp_path, product):
+    """NGC 3675 WFPC2: partners' WCS differ by ~0.4 px across the field, enough to move a footprint edge a row."""
+    h = wcs_header(200, 200)
+    regions = [_region(h, 19.9, 179.1, 29.9, 149.1)]  # edges just past a whole pixel: a 0.4% scale change tips them
+    first = process(raw_fetched(tmp_path, _l_shape()), product("F336W", grid="visit 1", grid_regions=regions),
+                    TARGET, Options(star_repair=False))
+    d = tmp_path / "b"; d.mkdir()
+    f = raw_fetched(d, _l_shape())
+    for k in ("CD1_1", "CD2_2"):
+        f.header[k] *= 1.004  # the partner's slightly different scale
+    p = product("F450W", grid="visit 1", grid_regions=regions)
+    alone = process(f, p, TARGET, Options(star_repair=False))
+    assert alone.header["FFTRIMBX"] != first.header["FFTRIMBX"]  # worked out afresh, the box moves
+    shared = process(f, p, TARGET, Options(star_repair=False),
+                     grid_box=first.header["FFTRIMBX"])
+    assert shared.data.shape == first.data.shape
+    assert (shared.header["CRPIX1"], shared.header["CRPIX2"]) == (first.header["CRPIX1"], first.header["CRPIX2"])
+    assert shared.header["FFGRID"] == first.header["FFGRID"]
+    assert "same box as an earlier image" in " ".join(str(c) for c in shared.header["HISTORY"])
+
+
+def test_reused_box_follows_the_reference_pixel_after_a_cutout(tmp_path, product):
+    h = wcs_header(200, 200)
+    p = product("F336W", grid="visit 1", grid_regions=[_region(h, 20, 179, 30, 149)])
+    whole = process(raw_fetched(tmp_path, _l_shape()), p, TARGET, Options(star_repair=False))
+    d = tmp_path / "b"; d.mkdir()
+    f = raw_fetched(d, _l_shape()[3:, 2:].copy())  # a partner fetched without its first 3 rows and 2 columns
+    f.header["CRPIX1"], f.header["CRPIX2"] = 100.5 - 2, 100.5 - 3
+    part = process(f, p, TARGET, Options(star_repair=False), grid_box=whole.header["FFTRIMBX"])
+    assert part.data.shape == whole.data.shape
+    assert (part.header["CRPIX1"], part.header["CRPIX2"]) == (whole.header["CRPIX1"], whole.header["CRPIX2"])

@@ -133,3 +133,26 @@ def test_objects_inside_streamed_after_results_for_sized_objects(monkeypatch, pr
     assert done["objects"][0]["sets"][0]["instrument"] == "WFPC2/PC"
     ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "GOOD"}).text)  # size unknown
     assert "inside" not in [e for e, _ in ev]
+
+
+def test_download_gives_each_image_its_grid_footprints(monkeypatch, product):
+    on_grid = [product(f, grid="visit 1", region=f"POLYGON {i} 0 1 0 1 1") for i, f in enumerate(("F435W", "F555W"))]
+    lone = product("F814W")
+
+    class Good(Archive):
+        name = "GOOD"
+        def search(self, target, radius_deg):
+            return [*on_grid, lone]
+
+    monkeypatch.setattr(webapp, "ARCHIVES", {"GOOD": Good})
+    app = webapp.create_app(Settings())
+    started = []
+    monkeypatch.setattr(webapp.DownloadManager, "start", lambda self, target, items, options: started.extend(items) or
+                        type("Job", (), {"snapshot": lambda self: {}})())
+    c = TestClient(app)
+    c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "GOOD", "min_filters": 2})
+    target = {"query": "x", "matched_id": "X", "ra": 1, "dec": 2}
+    c.post("/api/download", json={"target": target, "star_repair": False, "cutout": False,
+                                  "items": [{"key": on_grid[0].key}, {"key": lone.key}]})
+    assert started[0].product.grid_regions == sorted(p.region for p in on_grid)  # its partner's too, not downloaded
+    assert started[1].product.grid_regions == []

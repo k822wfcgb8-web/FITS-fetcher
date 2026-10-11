@@ -22,10 +22,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from astropy.io import fits
+
 from fits_fetcher.archives.base import Archive, ArchiveError, Product, Target
 from fits_fetcher.config import Settings
 from fits_fetcher.output import object_folder, output_paths, write_credits
-from fits_fetcher.processing import Options, ProcessingError, existing_matches, process, save
+from fits_fetcher.processing import Options, ProcessingError, existing_matches, grid_id, process, save
 from fits_fetcher.transfer import Cancelled, Transfer, TransferError
 
 log = logging.getLogger(__name__)
@@ -61,6 +63,7 @@ class DownloadJob:
         self.version = 0
         self._lock = threading.Lock()
         self._processing = threading.Semaphore(1)
+        self._grid_boxes: dict[str, str] = {}  # REQ-75: grid ID → trim box (FFTRIMBX) its first image used
         self._pools: list[ThreadPoolExecutor] = []
         for it in items:
             it.total = it.product.size_bytes or 0
@@ -142,8 +145,11 @@ class DownloadJob:
         with self._processing:
             self.transfer.check()
             self._update(item, message="")
-            result = process(fetched, p, self.target, options)
+            box = self._grid_box(p) if p.grid else None
+            result = process(fetched, p, self.target, options, grid_box=box)
             save(result, paths[0])
+            if "FFTRIMBX" in result.header:
+                self._grid_boxes.setdefault(result.header["FFGRID"], result.header["FFTRIMBX"])
             notes = " ".join(result.warnings)
             del result
         for x in paths[1:]:
@@ -152,6 +158,20 @@ class DownloadJob:
         for f in fetched.files:  # REQ-23: originals go once the output is safely saved
             f.unlink(missing_ok=True)
         self._update(item, state="saved", done=item.total, paths=[str(x) for x in paths], message=notes)
+
+    def _grid_box(self, p: Product) -> str | None:
+        """REQ-75: the trim box of an image on `p`'s grid saved earlier, in this download or in the object's folder."""
+        key = grid_id(p)
+        if key not in self._grid_boxes:
+            for path in sorted(self.object_dir.glob("*/*.fits")) if self.object_dir.is_dir() else []:
+                try:
+                    h = fits.getheader(path)
+                except (OSError, ValueError):
+                    continue
+                if h.get("FFGRID") == key and h.get("FFTRIMBX"):
+                    self._grid_boxes[key] = h["FFTRIMBX"]
+                    break
+        return self._grid_boxes.get(key)
 
     # ---------- reporting ----------
     def snapshot(self) -> dict:

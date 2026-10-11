@@ -8,8 +8,9 @@ from astropy.io import fits
 from fastapi.testclient import TestClient
 
 from fakes import DEC, RA, wcs_header
-from fits_fetcher.archives.base import Archive, ArchiveError, Fetched
+from fits_fetcher.archives.base import Archive, ArchiveError, Fetched, Target
 from fits_fetcher.config import Settings
+from fits_fetcher.processing import Options
 from fits_fetcher.web import app as webapp
 
 TARGET = {"query": "M51", "matched_id": "M 51", "ra": RA, "dec": DEC, "size_arcmin": 1.0}
@@ -127,3 +128,21 @@ def test_open_folder_needs_saved_files(setup, monkeypatch):
     assert c.post(f"/api/download/{job_id}/open").status_code == 404
     job_id, _ = download(c, [(keys(sets)[0], ["S"])])
     assert c.post(f"/api/download/{job_id}/open").json() == {"ok": True} and opened[0].name == "M51"
+
+
+def test_grid_box_found_in_files_saved_earlier(tmp_path, product):
+    from fits_fetcher.downloads import DownloadJob
+    from fits_fetcher.processing import grid_id
+
+    settings = Settings(output_dir=str(tmp_path), cache_dir=str(tmp_path / "cache"))
+    target = Target(query="NGC 3675", matched_id="NGC 3675", ra=1, dec=2)
+    p = product("F450W", grid="visit 1")
+    job = DownloadJob(target, [], Options(), settings, {})
+    assert job._grid_box(p) is None
+    saved = job.object_dir / "Set" / "F336W.fits"
+    saved.parent.mkdir(parents=True)
+    fits.PrimaryHDU(np.zeros((2, 2), np.float32),
+                    fits.Header({"FFGRID": grid_id(p), "FFTRIMBX": "-10 10 -5 5"})).writeto(saved)
+    job._grid_boxes.clear()
+    assert DownloadJob(target, [], Options(), settings, {})._grid_box(p) == "-10 10 -5 5"
+    assert DownloadJob(target, [], Options(), settings, {})._grid_box(product("F450W", grid="visit 2")) is None

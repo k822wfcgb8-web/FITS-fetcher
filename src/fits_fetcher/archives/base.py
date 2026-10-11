@@ -62,6 +62,9 @@ class Product:
     # all the set's filters share; `spot` names that area and keeps the key apart from the uncut product.
     cut: list[tuple[float, float]] = field(default_factory=list)
     spot: str = ""
+    # REQ-75: footprints of every image the search found on this image's grid, set when a download starts, so
+    # all of them are trimmed to the same box.
+    grid_regions: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> str:

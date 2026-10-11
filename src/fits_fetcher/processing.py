@@ -1,12 +1,13 @@
 """Processing chain for one downloaded science image (Section 8).
 
 Order (REQ-41): read → linearise (REQ-36) → star-core repair (REQ-37–43) → cutout (REQ-25, REQ-58)
-→ NaN to 0 (REQ-22) → header (S-22, REQ-23, REQ-42, REQ-54) → compatibility check (REQ-49) → save.
+→ trim the blank border (REQ-75, REQ-76) → NaN to 0 (REQ-22) → header (S-22, REQ-23, REQ-42, REQ-54) → compatibility check (REQ-49) → save.
 Reprojection (REQ-24) comes in a later build; `Options.reproject` is recorded as off.
 """
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import math
 import os
 import textwrap
@@ -36,6 +37,11 @@ RIM_WIDTH_PX = 3
 BRIGHT_RIM_SIGMA = 25.0
 BRIGHT_RIM_PERCENTILE = 90
 
+# REQ-75: margin around a grid's footprints when trimming (the archive footprint of a WFPC2 visit lay within 3 px
+# of its data, NGC 3675); REQ-76: warn when more than this share of the trimmed image is still blank.
+TRIM_MARGIN_PX = 16
+BLANK_WARN_SHARE = 0.30
+
 _DTYPES = {8: ">u1", 16: ">i2", 32: ">i4", 64: ">i8", -32: ">f4", -64: ">f8"}
 
 
@@ -52,9 +58,12 @@ class Options:
     cutout: bool = False
     box_arcmin: float = 10.0
     reproject: bool = False  # REQ-24: not built yet
+    trim: bool = True        # REQ-75: always on; recorded so files made before trimming are processed again
 
     def for_product(self, product: Product) -> Options:
-        if product.parts or product.cut:  # already cut: Pan-STARRS box (REQ-68), off-centre shared area (REQ-71)
+        if product.parts:  # a Pan-STARRS box (REQ-68) is built to its size and its footprint is one skycell's
+            return replace(self, cutout=False, trim=False)
+        if product.cut:  # already cut to the off-centre shared area (REQ-71)
             return replace(self, cutout=False)
         return replace(self, cutout=True) if product.is_mosaic else self  # mosaics are always cut (REQ-58)
 
@@ -64,7 +73,8 @@ class Options:
                 ("FFREPMXB", self.repair_max_area_bright, "[px] largest hole next to a bright star"),
                 ("FFCUTOUT", self.cutout, "cut around the object"),
                 ("FFCUTSZ", round(self.box_arcmin, 3) if self.cutout else 0.0, "[arcmin] cutout box size"),
-                ("FFREPROJ", self.reproject, "reprojected onto a common grid")]
+                ("FFREPROJ", self.reproject, "reprojected onto a common grid"),
+                ("FFTRIM", self.trim, "blank border trimmed")]
 
     def matches(self, header: fits.Header) -> bool:
         """Was an existing output made with these settings? (REQ-54)"""
@@ -253,7 +263,8 @@ def _wcs(header: fits.Header) -> WCS:
 
 
 # ---------- the chain ----------
-def process(f: Fetched, product: Product, target: Target, options: Options) -> Result:
+def process(f: Fetched, product: Product, target: Target, options: Options, grid_box: str | None = None) -> Result:
+    """Run the chain. `grid_box` is the trim box an earlier image on this product's grid recorded (FFTRIMBX)."""
     options = options.for_product(product)
     data = read_science(f)
     history = list(f.notes)
@@ -291,12 +302,108 @@ def process(f: Fetched, product: Product, target: Target, options: Options) -> R
             if clipped:
                 notes.append("The box around the object ran past the image edge, so part of the object is missing.")
 
+    blank, recorded = None, None
+    if options.trim:
+        tbox, lines, warns = trim_box(data, wcs, product.grid, product.grid_regions, grid_box)
+        history += lines
+        notes += warns
+        if tbox is not None and product.grid:
+            recorded = box_offsets(tbox, wcs)
+        if tbox is not None and tbox != (0, data.shape[1], 0, data.shape[0]):
+            x0, x1, y0, y1 = tbox
+            how = (" (the same box as an earlier image on this grid)." if grid_box
+                   else " (from this grid's archive footprints; its other images reuse it)." if product.grid else ".")
+            history.append(f"Trimmed the blank border: kept {x1 - x0} x {y1 - y0} px of {data.shape[1]} x {data.shape[0]}{how}")
+            data = data[y0:y1, x0:x1].copy()
+            wcs = wcs[y0:y1, x0:x1]
+        blank = 1 - float(np.count_nonzero(np.isfinite(data) & (data != 0))) / data.size
+        if blank > BLANK_WARN_SHARE:
+            msg = (f"{blank:.0%} of this image is blank (outside the camera's field). If PixInsight's auto-stretch "
+                   "shows only grey, run it on a preview inside the data and drag it onto the image.")
+            notes.append(msg)
+            history.append(msg)
+
     zeros = nan_to_zero(data)
     if zeros:
         history.append(f"{zeros} blank (NaN) pixels set to 0.")
 
     header = build_header(f, product, target, wcs, options, history, rep)
+    if blank is not None:
+        header["FFBLANK"] = (round(100 * blank, 1), "[%] blank pixels after trimming")
+    if recorded:
+        header["FFGRID"] = (grid_id(product), "FITS-fetcher pixel-grid ID")
+        header["FFTRIMBX"] = (recorded, "[px] trim box x0 x1 y0 y1 from reference pixel")
     return Result(data, header, notes)
+
+
+def grid_id(product: Product) -> str:
+    """A short ID for the product's pixel grid (REQ-60), to find its partners' trim box in saved files (REQ-75)."""
+    return hashlib.sha1(f"{product.archive}|{product.grid}".encode()).hexdigest()[:12]
+
+
+def box_offsets(box: tuple[int, int, int, int], wcs: WCS) -> str:
+    """REQ-75: a trim box relative to the reference pixel, which grid partners share however much of the canvas
+    each was fetched or cut to."""
+    rx, ry = (float(v) - 1 for v in wcs.wcs.crpix)
+    x0, x1, y0, y1 = box
+    return f"{x0 - rx:.4f} {x1 - rx:.4f} {y0 - ry:.4f} {y1 - ry:.4f}"
+
+
+def _from_offsets(offsets: str, wcs: WCS, shape: tuple[int, int]) -> tuple[int, int, int, int] | None:
+    rx, ry = (float(v) - 1 for v in wcs.wcs.crpix)
+    dx0, dx1, dy0, dy1 = (float(v) for v in offsets.split())
+    ny, nx = shape
+    box = (max(0, round(rx + dx0)), min(nx, round(rx + dx1)), max(0, round(ry + dy0)), min(ny, round(ry + dy1)))
+    return box if box[0] < box[1] and box[2] < box[3] else None
+
+
+def trim_box(data: np.ndarray, wcs: WCS, grid: str, grid_regions: list[str], reuse: str | None = None
+             ) -> tuple[tuple[int, int, int, int] | None, list[str], list[str]]:
+    """REQ-75: the pixel box (x0, x1, y0, y1) to keep (None keeps the whole image), HISTORY lines, and warnings.
+
+    Without grid partners the box is the one around the real data (finite, non-zero). Images on a shared grid
+    (REQ-60) all use one box: the one an earlier partner recorded (`reuse`), or else the box around the grid's
+    archive footprints plus a margin. It can't be worked out afresh for each image: partners' WCS differ slightly
+    (0.4 px across the NGC 3675 WFPC2 field), enough to move a footprint edge by a row. If real data reaches past
+    the box, the box grows to keep that data.
+    """
+    valid = np.isfinite(data) & (data != 0)
+    rows, cols = np.flatnonzero(valid.any(axis=1)), np.flatnonzero(valid.any(axis=0))
+    del valid
+    if not rows.size:
+        return None, [], []
+    ny, nx = data.shape
+    own = (int(cols[0]), int(cols[-1]) + 1, int(rows[0]), int(rows[-1]) + 1)
+    if not grid:
+        return own, [], []
+    box = _from_offsets(reuse, wcs, data.shape) if reuse else None
+    if box is not None:
+        return _grow(box, own)
+    ras, decs = [], []
+    for s in grid_regions:
+        for kind, nums in footprint.shapes(s):
+            if kind == "POLYGON":
+                ras += nums[0::2]
+                decs += nums[1::2]
+    if not ras:
+        return None, ["Not trimmed: the archive gave no usable footprint for this grid, and a box of its own "
+                      "would stop it lining up with its grid partners."], []
+    px, py = wcs.celestial.all_world2pix(np.array(ras), np.array(decs), 0)
+    px, py = px.round(6), py.round(6)  # 19.9999999 px is 20, as in footprint.pixel_box
+    m = TRIM_MARGIN_PX
+    box = (max(0, math.floor(px.min()) - m), min(nx, math.ceil(px.max()) + 1 + m),
+           max(0, math.floor(py.min()) - m), min(ny, math.ceil(py.max()) + 1 + m))
+    return _grow(box, own)
+
+
+def _grow(box: tuple[int, int, int, int], own: tuple[int, int, int, int]
+          ) -> tuple[tuple[int, int, int, int], list[str], list[str]]:
+    grown = (min(box[0], own[0]), max(box[1], own[1]), min(box[2], own[2]), max(box[3], own[3]))
+    if grown != box:
+        return grown, ["The trim box grew to keep real data outside this grid's archive footprints."], [
+            "Real data reached past the box shared by this grid, so this image is larger than its grid partners "
+            "and needs registration to stack with them."]
+    return box, [], []
 
 
 def build_header(f: Fetched, product: Product, target: Target, wcs: WCS, options: Options,

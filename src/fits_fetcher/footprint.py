@@ -13,7 +13,8 @@ _SHAPE = re.compile(r"(POLYGON|CIRCLE|BOX)\b", re.IGNORECASE)
 _NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 
 
-def _shapes(s_region: str) -> list[tuple[str, list[float]]]:
+def shapes(s_region: str) -> list[tuple[str, list[float]]]:
+    """The shapes of an s_region: (kind, numbers), e.g. ("POLYGON", [ra1, dec1, ra2, dec2, ...])."""
     parts = _SHAPE.split(s_region or "")
     shapes = []
     for kind, body in zip(parts[1::2], parts[2::2]):
@@ -54,7 +55,7 @@ def _point_in_polygon(px: float, py: float, poly: list[tuple[float, float]]) -> 
 
 def contains(s_region: str, ra: float, dec: float) -> bool:
     """True if any shape in `s_region` contains the point. Unparseable regions return False."""
-    for kind, nums in _shapes(s_region):
+    for kind, nums in shapes(s_region):
         if kind == "CIRCLE" and len(nums) >= 3:
             if angular_sep_deg(nums[0], nums[1], ra, dec) <= nums[2]:
                 return True
@@ -77,7 +78,7 @@ def contains(s_region: str, ra: float, dec: float) -> bool:
 def area_deg2(s_region: str) -> float | None:
     """Approximate sky area of an s_region (sum of its shapes), for download-size estimates."""
     total = 0.0
-    for kind, nums in _shapes(s_region):
+    for kind, nums in shapes(s_region):
         if kind == "CIRCLE" and len(nums) >= 3:
             total += math.pi * nums[2] ** 2
         elif kind == "BOX" and len(nums) >= 4:
@@ -165,7 +166,7 @@ def polygons_arcsec(s_region: str, ra0: float, dec0: float) -> list:
     import numpy as np
 
     out = []
-    for kind, nums in _shapes(s_region):
+    for kind, nums in shapes(s_region):
         if kind == "POLYGON" and len(nums) >= 6:
             x, y = tangent_arcsec(nums[0::2], nums[1::2], ra0, dec0)
             out.append(np.column_stack([x, y]))

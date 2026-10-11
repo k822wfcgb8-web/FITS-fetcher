@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.12 (approved)
+**Version:** 1.13 (approved)
 **Date:** 2026-10-11
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -205,7 +205,9 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | REQ-67 | *(Resolved Q-47, after testing M37 Pan-STARRS i and z)* **Large holes next to bright stars.** Pan-STARRS masks large areas around very bright stars (rectangles up to about 18,000 px in M37), which REQ-38's size limit leaves black. An enclosed hole larger than the REQ-38 limit is still filled if (a) it is **at most a second limit** (default **50,000 px**, adjustable in settings and recorded in the header) and (b) its **edge is bright starlight**: the brightest tenth of the pixels within 3 px of the hole lie at least **25σ above the sky** (sky and σ from a sigma-clipped sample of the image). In M37 this separated star holes (102–523σ) from blank blocks in empty sky and image borders (2–6σ). Holes that don't touch a star, such as thin streaks running away from it, stay black (*stars only* chosen at review); they can be fixed in PixInsight (e.g. PixelClip or CloneStamp). |
 | REQ-39 ✅ | **Fill method.** Holes are filled from the rim inward, one layer at a time: in each pass, every hole pixel touching at least one valid pixel (8-neighbour) is set to the mean of its valid neighbours, using values from the previous pass. This keeps PixelClip's "mean of nearest valid neighbours" approach but fills symmetrically, instead of in raster order (which in the original weights the fill toward the upper-left rim). |
 | REQ-40 ✅ | **No threshold in pixel units.** Unlike PixelClip, the app does not use a brightness threshold. PixelClip's 0.0001 threshold applies to PixInsight's 0–1 rescaled image. In the archive's physical units, background-subtracted sky is near or below 0, so a threshold would alter the whole background. |
-| REQ-41 ✅ | **Processing order.** Linearisation (REQ-36) → star-core repair → reprojection / cutout (REQ-24, REQ-25) → NaN-to-0 replacement (REQ-22). Repair must come before reprojection, so empty cores aren't interpolated into their surroundings. |
+| REQ-41 ✅ | **Processing order.** Linearisation (REQ-36) → star-core repair → reprojection / cutout (REQ-24, REQ-25) → trimming the blank border (REQ-75) → NaN-to-0 replacement (REQ-22). Repair must come before reprojection, so empty cores aren't interpolated into their surroundings. |
+| REQ-75 | *(Resolved Q-61, Q-62, after NGC 3675's WFPC2 pair showed only grey in PixInsight; verification step 17)* Every saved image is **trimmed to the box around its real data** (finite, non-zero pixels). Images on a **shared pixel grid** (REQ-60) are all cut to **one box around every footprint the search found on that grid, plus 16 px**, so they stay pixel-aligned even when downloaded on different days; if real data reaches past that box, the box grows to keep it, and the row and HISTORY say the image now needs registration. A grid image with no usable footprint is not trimmed. **Pan-STARRS boxes (REQ-68) are not trimmed**: they are built to size, and their footprint is a single skycell's. The header records `FFTRIM` and `FFBLANK` (% blank after trimming); files saved before trimming existed are processed again (REQ-54). |
+| REQ-76 | *(Resolved Q-61)* When **more than 30%** of a trimmed image is still blank (e.g. WFPC2's L-shaped field), its result row and HISTORY say so, with a PixInsight tip: run Auto Stretch (STF) on a preview inside the data and drag it onto the image. |
 | REQ-42 ✅ | **On by default**, with a setting to turn it off. Each repaired file records in its FITS header that repair was applied, the number of regions and pixels filled, and the size limit used (e.g., as `HISTORY` lines). |
 | REQ-43 ✅ | **Accuracy note.** Filled cores are a cosmetic estimate (a flat plateau at roughly the rim level), not real measurements. This is acceptable for imaging. The app's documentation states this so filled files aren't used for photometry. |
 | REQ-44 ✏️ | **Licensing.** PixelClip.js is GPL v3, the same licence as this project (REQ-34). PixelClip and its authors are credited in the **app documentation only**; file headers do not carry the credit. *(modified at review)* |
@@ -315,6 +317,8 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-58~~ | Which MAST telescope a result comes from (NGC 3675's GPC1 set looked like Hubble): **resolved → telescope tick boxes under MAST (REQ-72) and the telescope named on every set and row (REQ-73)** | — |
 | ~~Q-59~~ | Telescope information: **resolved → pop-up fact sheet including artifacts to expect (REQ-74)** | — |
 | ~~Q-60~~ | Where telescope names link to it: **resolved → tick boxes and results (REQ-74)** | — |
+| ~~Q-61~~ | Mostly blank images (NGC 3675 WFPC2: 56% blank, so STF's median and spread were 0): **resolved → trim to the data and warn above 30% blank (REQ-75, REQ-76)** | — |
+| ~~Q-62~~ | Trimming images on a shared grid: **resolved → one box from the grid's archive footprints plus 16 px (REQ-75)** | — |
 
 ---
 
@@ -345,3 +349,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.10 | 2026-10-10 | Added and resolved Q-48–Q-52 after the M46 search: Pan-STARRS box stitched from skycells (REQ-68), coverage shown on each row (REQ-69), objects inside a large object listed (REQ-70). |
 | 1.11 | 2026-10-11 | Added and resolved Q-53–Q-57 after the M35 search: off-centre same-grid colour sets in large objects (REQ-71); REQ-14 note. |
 | 1.12 | 2026-10-11 | Added and resolved Q-58–Q-60 after the NGC 3675 download: MAST telescope tick boxes (REQ-72), telescope named on sets and rows (REQ-73), telescope fact-sheet pop-ups (REQ-74). |
+| 1.13 | 2026-10-11 | Added and resolved Q-61–Q-62 after NGC 3675's WFPC2 pair stretched to grey: trim the blank border (REQ-75), warn when still mostly blank (REQ-76); REQ-41 order updated. |
