@@ -208,3 +208,39 @@ Before, M51 came as one 68 MB skycell with the galaxy near a corner. Now each ob
 - M51: 18 archive names became 4 objects (SN 2005cs, M51 OT2019-1, SN 2011dh, NGC 5195). Its own pointings (`M51-POS4`, `NGC5194-1`) and labels (`ANY`) were dropped.
 - M46: `QXPUP` joined OH 231.8+04.2.
 - Searching NGC 2438 from the list found its WFPC2 narrowband set (68% coverage) and a Pan-STARRS box (100%).
+
+## 16 — Why M35 showed one set, and off-centre sets (REQ-71), 2026-10-11
+
+**Where the M35 images went.** M35 (NGC 2168, 38′ across) at MAST, step by step, within its 19′ radius:
+
+| Stage | Images |
+|---|---|
+| Combined, public, allowed instruments (HST, JWST, PS1) | 2,880 |
+| HST duplicates removed (classic pipeline and mosaics; REQ-58) | 506 |
+| Footprint contains the cluster's centre (REQ-14) | 9 |
+| At least 3 filters from one instrument (REQ-10, REQ-11) | 5 (Pan-STARRS g r i z y) |
+
+The duplicate step only drops copies of the same exposures. The centre rule removes 497 of 506: HST fields are 2–3′ wide, and nearly all M35 pointings are WFC3/ACS calibration fields (programmes 13101, 14020, 13571; 1–40 s exposures) or WFPC2 parallels. REQ-70 hid the rest: it drops the searched object's own pointings (`M-35`) and unknown labels (`ANY`, `PAR`).
+
+**Why the MAST Portal shows more.** A portal search on M35 (3′) returns 11,802 rows: 10,104 light curves (TESS/K2), 8,487 raw files, and HLA/HLSP reprocessings (the groups overlap). Only 38 images of any kind contain the centre.
+
+**Off-centre groups.** Without the centre rule, 23 combinations of 3–5 filters from one instrument cover a common spot inside M35, in about 7 places. Most combine different pointings (WFPC2), so they'd need registration. On one pixel grid (REQ-71), after duplicates and slivers are dropped, 6 sets remain (search 0.1 s after the 0.7–30 s disc query):
+
+| Set | Position | Shared area | Source |
+|---|---|---|---|
+| ACS/WFC F502N, F555W, F606W, F658N | 4.3′ NW | 2.9 arcmin² | skycell p1869x11y04 mosaics, 2–137 s |
+| WFC3/UVIS F555W, F606W, F814W | 5.9′ SW | 7.4 arcmin² | visit 13101_b1, 5–10 s |
+| WFC3/UVIS F410M, F502N, F606W | 1.9′ E | 6.0 arcmin² | skycell p1869x11y04 mosaics, 16–57 s |
+| WFC3/UVIS F410M, F502N, F606W | 3.2′ E | 1.8 arcmin² | skycell p1869x10y04 mosaics |
+| ACS/WFC F502N, F550M, F606W | 6.9′ SE | 1.7 arcmin² | skycell p1869x10y04 mosaics |
+| ACS/WFC F502N, F550M, F606W | 8.0′ E | 0.7 arcmin² | skycell p1869x10y04 mosaics |
+
+- The 5-filter WFC3/UVIS mosaic group (F555W–F814W) in skycell p1785x03y20 shares only **0.19 arcmin²**, a triangle where the skycell edge clips the mosaics. It falls under the 0.25 arcmin² minimum.
+- Mosaic footprints are traced outlines (often concave, up to 50 vertices), and the same sky appears in several overlapping skycells (p1785x03y20, p1786x19y20, p1869x11y04).
+
+**Download check.**
+- ACS set (4 mosaics): every filter 4490 × 1635 px with the same CRPIX/CRVAL, 0–6% blank; 600 MB fetched (full mosaic rows).
+- WFC3/UVIS set (3 single-visit images): every filter 2975 × 2782 px, same grid. **49% blank**: the field is a 45° diamond in a north-up image, the same in each filter (kept, Q-57).
+- Both load in siril-cli (`load`, `stat`, exit 0).
+
+**Bug found and fixed.** `hst_13101_b1_wfc3_uvis_*_ic40b1` has only `_drz.fits`, no `_drc.fits`. The `_drc` address built for WFC3/UVIS and ACS/WFC answered HTTP 404. The MAST module now falls back to `_drz` on a 404, and the saved file's HISTORY records the address actually read. This also affected normal results.

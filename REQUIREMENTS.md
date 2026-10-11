@@ -1,7 +1,7 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.10 (approved)
-**Date:** 2026-10-10
+**Version:** 1.11 (approved)
+**Date:** 2026-10-11
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
 > **How to read this draft**
@@ -77,7 +77,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | S-11 ✅ | The user may also enter **RA/Dec coordinates directly** as a fallback. |
 | REQ-18 | *(Resolved Q-07)* When a name could match more than one object, the app **lists the candidates** (identifier, object type, coordinates) and the user picks one before the search runs. |
 | REQ-13 | *(Resolved Q-06)* Beyond Messier, NGC and IC, **any designation the name resolver recognises** is accepted; there is no fixed catalogue list and no built-in lookup table in version 1. If the resolver doesn't recognise a name, the user is told so and can enter RA/Dec instead (S-11). |
-| REQ-14 | *(Resolved Q-08)* An image counts as covering the object only if its footprint **contains the object's resolved centre coordinates**. |
+| REQ-14 | *(Resolved Q-08)* An image counts as covering the object only if its footprint **contains the object's resolved centre coordinates**. Images of a large object that miss its centre are offered separately as off-centre sets (REQ-71). |
 | S-12 ✅ | Search radius is set automatically from the object's apparent size when known, with a manual override. |
 
 
@@ -149,6 +149,13 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 - **S-21** ✏️ For each result, the **main row** shows: filter, central wavelength, broadband/narrowband flag, archive + instrument, exposure time, pixel scale, estimated download size. A **click-to-expand details view** shows: telescope, bandwidth, observation date, image dimensions, sky coverage of the object, data product level. *(modified at review)*
 - **REQ-69:** *(Resolved Q-50)* Each image row shows **how much of the object the image covers** (e.g. "covers 51% of M 46"), measured as the fraction of the object's disc (its apparent size from the resolver) inside the image footprint; for a stitched or cut image, of the delivered image. Each colour set shows its lowest coverage (taking the best image in each filter), so sets that show the whole object stand out. When the object's size is unknown, coverage shows "—". This moves S-21's "sky coverage of the object" from the details view to the main row.
 - **REQ-70:** *(Resolved Q-51)* For an object whose size is known, the search also lists **other objects with colour sets inside it**: images that overlap the object but miss its centre, with at least the minimum number of filters (REQ-10) per instrument. *(Resolved Q-52)* The archives' target names are **identified with SIMBAD**: spellings and aliases merge into one entry per object (listing each instrument's filters), the searched object's own pointings and unknown labels are dropped, and an unknown name whose images point at a listed object joins it. Example for M46: NGC 2438 (WFPC2, 4 filters) and OH 231.8+04.2 (WFC3/IR and WFPC2, 4 filters each); M51 goes from 18 archive names to 4 objects. Each has a **Search** button that searches that object. Survey tiles (Pan-STARRS) are not listed. The search area for this list is capped (see implementation notes) so very large objects stay fast.
+- **REQ-71:** *(Resolved Q-53–Q-57, after the M35 search returned only the Pan-STARRS set; verification step 16)* For an object whose size is known, the search also offers **off-centre colour sets**: images that miss the object's centre but where **at least the minimum number of filters (REQ-10) on one pixel grid** (REQ-60: HST single-visit images of one visit and detector, HST mosaics of one skycell) **share an area** inside the object's disc. Groups that need registration (different visits or pointings, JWST) are not offered (Q-53).
+  - **Mosaics:** off-centre sets always consider HST multi-visit mosaics, whatever the "Also show HST mosaics" switch says; the switch keeps its meaning for the normal results (Q-54).
+  - **Area delivered:** every image of a set is cut to the **same pixel box enclosing the area all its filters cover**, so the filters stay pixel-aligned without resampling. Where that area is tilted in the image, its corners stay blank in every filter (M35 WFC3/UVIS: 49%), rather than cutting to the largest rectangle inside it, which would lose about half the data (Q-55, Q-57). Mosaics are fetched only for the rows of the box (REQ-57); single-visit images are fetched whole and cut. The "cut around the object" option doesn't apply to these sets.
+  - **Placement:** a section **"Elsewhere in <object>"** below the normal sets, each set labelled with its distance and compass direction from the centre, the shared area in arcmin² and its coverage of the object (REQ-69) (Q-56).
+  - **Search area:** the object's disc, capped at 15′ radius like REQ-70 (same query, run once) (Q-56).
+  - **Duplicates:** the same sky appears in each visit's images and again in every skycell mosaic holding them. A set is dropped when another set from the same instrument(s) covers at least 80% of its area with the same filters or more and is deeper (or as deep and larger). Shared areas under 0.25 arcmin² (slivers where a skycell edge clips a mosaic) are dropped. Instrument mixing (REQ-11) and the filter-type and emission-line restrictions (REQ-19) apply as for normal sets.
+  - Example, M35: 6 sets, e.g. ACS/WFC F502N, F555W, F606W, F658N 4.3′ NW (2.9 arcmin², from a mosaic) and WFC3/UVIS F555W, F606W, F814W 5.9′ SW (7.4 arcmin², one visit).
 - **REQ-59:** *(Resolved Q-39)* The details view also shows the **image centre** as the archive reports it, in decimal degrees and sexagesimal (e.g. `RA 202.46741° (13h 29m 52.18s), Dec +47.19999° (+47° 12′ 00.0″)`), and **how far the object lies from that centre** (″ under 1′, otherwise ′). For an HST mosaic it is labelled *mosaic centre*, because the delivered file is cut around the object.
 - **REQ-60:** *(Resolved Q-40)* Within a colour set, images in **two or more filters that share one pixel grid** are marked as a matched group, so the user can see without opening the details which images stack pixel-for-pixel with no registration (PixInsight, Siril). Each group gets a letter and colour (*Grid A*, *Grid B* …): a coloured bar on the row's left edge, a chip under the filter name, and a legend line under the set name listing its filters, with a **Select** button that ticks the whole group. Only grids confirmed in verification step 12 are marked: HST single-visit images from the same visit and detector, HST mosaics from the same skycell, and Pan-STARRS stacks from the same skycell. JWST and different-visit images are not marked, since they need registration.
 
@@ -297,6 +304,11 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-50~~ | Showing coverage of the object: **resolved → percentage on the main row and per set (REQ-69)** | — |
 | ~~Q-51~~ | Images of other objects inside a large object: **resolved → listed with a Search button (REQ-70)** | — |
 | ~~Q-52~~ | Noisy 'Also inside' list (pointings, spellings, aliases): **resolved → identify target names with SIMBAD (REQ-70)** | — |
+| ~~Q-53~~ | M35 returned only Pan-STARRS (the centre rule drops 497 of 506 HST images): **resolved → offer off-centre sets, same pixel grid only (REQ-71)** | — |
+| ~~Q-54~~ | Mosaics for off-centre sets: **resolved → always included (REQ-71)** | — |
+| ~~Q-55~~ | Area delivered for an off-centre set: **resolved → the area all its filters share (REQ-71)** | — |
+| ~~Q-56~~ | Placement and search area: **resolved → own section below the results; disc capped at 15′ (REQ-71)** | — |
+| ~~Q-57~~ | Tilted shared area: **resolved → box around it, blank corners kept (REQ-71)** | — |
 
 ---
 
@@ -325,3 +337,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.8 | 2026-10-10 | Added and resolved Q-44–Q-46: settings dialog (REQ-64), folder choice (REQ-65), saving behaviour (REQ-66). |
 | 1.9 | 2026-10-10 | Added and resolved Q-47: larger repair limit for holes next to bright stars (REQ-67), after M37 Pan-STARRS i/z showed black masked areas. |
 | 1.10 | 2026-10-10 | Added and resolved Q-48–Q-52 after the M46 search: Pan-STARRS box stitched from skycells (REQ-68), coverage shown on each row (REQ-69), objects inside a large object listed (REQ-70). |
+| 1.11 | 2026-10-11 | Added and resolved Q-53–Q-57 after the M35 search: off-centre same-grid colour sets in large objects (REQ-71); REQ-14 note. |

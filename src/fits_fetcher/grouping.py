@@ -47,6 +47,8 @@ class ColourSet:
     rows: list[FilterRow]
     warnings: list[str] = field(default_factory=list)
     grids: list[GridGroup] = field(default_factory=list)
+    # REQ-71 off-centre sets: offset_arcmin, direction, area_arcmin2, ra, dec of the shared area; None otherwise.
+    position: dict | None = None
 
     @property
     def readiness(self) -> str:
@@ -72,7 +74,7 @@ class ColourSet:
         return {"name": self.name, "instruments": self.instruments, "readiness": self.readiness,
                 "coverage": self.coverage,
                 "warnings": self.warnings, "rows": [r.to_dict() for r in self.rows],
-                "grids": [g.to_dict() for g in self.grids]}
+                "grids": [g.to_dict() for g in self.grids], "position": self.position}
 
 
 def _grid_groups(rows: list[FilterRow]) -> list[GridGroup]:
@@ -92,13 +94,13 @@ def _label(i: int) -> str:
     return chr(65 + i) if i < 26 else _label(i // 26 - 1) + chr(65 + i % 26)
 
 
-def _set_name(instruments: list[str], rows: list[FilterRow]) -> str:
+def set_name(instruments: list[str], rows: list[FilterRow]) -> str:
     """Folder-style name, e.g. 'ACS-WFC_F435W-F555W-F814W' (S-29)."""
     inst = "+".join(i.replace("/", "-") for i in instruments)
     return f"{inst}_{'-'.join(r.filter for r in rows)}"
 
 
-def _passes(product: Product, band_type: str, lines: set[str]) -> bool:
+def passes(product: Product, band_type: str, lines: set[str]) -> bool:
     """REQ-19 filter type and emission-line restrictions."""
     if band_type in ("broad", "narrow") and product.band_type != band_type:
         return False
@@ -111,7 +113,7 @@ def build_sets(products: list[Product], *, min_filters: int = 3, mix_instruments
                band_type: str = "either", lines: set[str] | None = None,
                pixel_scale_warn_ratio: float = 4.0) -> list[ColourSet]:
     lines = lines or set()
-    keep = [p for p in products if _passes(p, band_type, lines)]
+    keep = [p for p in products if passes(p, band_type, lines)]
 
     groups: dict[str, list[Product]] = defaultdict(list)
     for p in keep:
@@ -130,7 +132,7 @@ def build_sets(products: list[Product], *, min_filters: int = 3, mix_instruments
             r.products.sort(key=lambda p: p.obs_date, reverse=True)
             r.products.sort(key=lambda p: p.exptime_s or 0, reverse=True)
         instruments = sorted({f"{p.instrument}" for p in members})
-        cs = ColourSet(_set_name(instruments, rows), instruments, rows, grids=_grid_groups(rows))
+        cs = ColourSet(set_name(instruments, rows), instruments, rows, grids=_grid_groups(rows))
         if mix_instruments:
             scales = [p.pixel_scale_arcsec for p in members if p.pixel_scale_arcsec]
             if scales and max(scales) / min(scales) > pixel_scale_warn_ratio:  # REQ-26: warn, don't block

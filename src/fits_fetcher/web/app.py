@@ -23,12 +23,12 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from fits_fetcher import __version__, filters, footprint
+from fits_fetcher import __version__, filters, footprint, spots
 from fits_fetcher.archives import ARCHIVES, PLANNED, ArchiveError, Product, Target
 from fits_fetcher.config import EDITABLE, Settings, validated
 from fits_fetcher.downloads import DownloadManager, Item, open_folder
 from fits_fetcher.folders import NoFolderDialog, choose_folder
-from fits_fetcher.grouping import build_sets
+from fits_fetcher.grouping import build_sets, passes
 from fits_fetcher.inside import identify
 from fits_fetcher.output import thumbnail_png
 from fits_fetcher.processing import Options
@@ -141,7 +141,32 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
                     yield _sse("sets", {"target": asdict(target), "sets": [s.to_dict() for s in sets],
                                         "products_found": len(products)})
 
-            # REQ-70: after the results, other objects with colour sets inside a large object (a slower query).
+            # REQ-71: after the results, same-grid sets away from the centre (a slower query of the whole disc,
+            # shared with REQ-70 below).
+            if target.size_arcmin:
+                yield _sse("elsewhere", {"state": "searching", "sets": []})
+                candidates, failed = [], []
+                for name, archive in instances.items():
+                    fut = loop.run_in_executor(None, archive.elsewhere, target)
+                    try:
+                        candidates += await asyncio.wait_for(fut, settings.archive_timeout_s)
+                    except Exception as e:  # never spoils the results already shown
+                        log.warning("%s: looking for off-centre sets failed: %s", name, e)
+                        failed.append(name)
+                candidates = [p for p in candidates if passes(p, band_type, line_set)]
+                fut = loop.run_in_executor(None, lambda: spots.build(
+                    candidates, target, min_filters=min_filters, mix_instruments=mix_instruments))
+                try:
+                    found_sets = await asyncio.wait_for(fut, settings.archive_timeout_s)
+                except Exception as e:
+                    log.exception("Building off-centre sets failed")
+                    found_sets, failed = [], failed + [f"off-centre sets ({type(e).__name__})"]
+                for cs in found_sets:
+                    known.update((p.key, p) for r in cs.rows for p in r.products)
+                yield _sse("elsewhere", {"state": "done", "sets": [cs.to_dict() for cs in found_sets],
+                                         "failed": failed})
+
+            # REQ-70: after the results, other objects with colour sets inside a large object.
             if target.size_arcmin:
                 yield _sse("inside", {"state": "searching", "objects": []})
                 groups, failed, objects = [], [], []

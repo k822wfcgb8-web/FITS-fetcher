@@ -54,7 +54,7 @@ class Options:
     reproject: bool = False  # REQ-24: not built yet
 
     def for_product(self, product: Product) -> Options:
-        if product.parts:  # a Pan-STARRS box is already cut to 1.5x the object (REQ-68)
+        if product.parts or product.cut:  # already cut: Pan-STARRS box (REQ-68), off-centre shared area (REQ-71)
             return replace(self, cutout=False)
         return replace(self, cutout=True) if product.is_mosaic else self  # mosaics are always cut (REQ-58)
 
@@ -281,10 +281,15 @@ def process(f: Fetched, product: Product, target: Target, options: Options) -> R
         x0, x1, y0, y1 = box
         data = data[y0:y1, x0:x1].copy()
         wcs = wcs[y0:y1, x0:x1]
-        history.append(f"Cut around {target.matched_id or 'the object'}: {x1 - x0} x {y1 - y0} px "
-                       f"({options.box_arcmin:.1f} arcmin box).")
-        if clipped:
-            notes.append("The box around the object ran past the image edge, so part of the object is missing.")
+        if product.cut:
+            history.append(f"Cut to the area all filters of this set share ({product.spot}): {x1 - x0} x {y1 - y0} px.")
+            if clipped:
+                notes.append("The shared area ran past this image's edge, so its box is smaller than the other filters'.")
+        else:
+            history.append(f"Cut around {target.matched_id or 'the object'}: {x1 - x0} x {y1 - y0} px "
+                           f"({options.box_arcmin:.1f} arcmin box).")
+            if clipped:
+                notes.append("The box around the object ran past the image edge, so part of the object is missing.")
 
     zeros = nan_to_zero(data)
     if zeros:
@@ -325,7 +330,7 @@ def build_header(f: Fetched, product: Product, target: Target, wcs: WCS, options
     h["FFNPIX"] = (repaired.pixels, "star-core pixels filled")
     h["FFNBRGT"] = (repaired.bright, "of which large holes next to bright stars")
     h.add_history(f"Downloaded {today} UTC by FITS-fetcher {__version__} from:")
-    for part in textwrap.wrap(product.url, 70, break_on_hyphens=False):
+    for part in textwrap.wrap(f.url or product.url, 70, break_on_hyphens=False):
         h.add_history(part)
     for line in history:
         for part in textwrap.wrap(line, 70):

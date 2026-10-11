@@ -57,10 +57,16 @@ class Product:
     grid: str = ""                      # images with the same grid stack pixel-for-pixel (REQ-60); "" = unknown
     coverage: float | None = None       # share of the object inside the delivered image, 0-1 (REQ-69)
     parts: list[str] = field(default_factory=list)  # Pan-STARRS skycells stitched into one box (REQ-68)
+    region: str = ""                    # the archive's footprint (STC-S s_region), for off-centre sets (REQ-71)
+    # REQ-71: an off-centre set's image is cut to the pixel box enclosing these sky points (ra, dec), the area
+    # all the set's filters share; `spot` names that area and keeps the key apart from the uncut product.
+    cut: list[tuple[float, float]] = field(default_factory=list)
+    spot: str = ""
 
     @property
     def key(self) -> str:
-        return f"{self.archive}:{self.collection}:{self.obs_id}:{self.filter}"
+        base = f"{self.archive}:{self.collection}:{self.obs_id}:{self.filter}"
+        return f"{base}:{self.spot}" if self.spot else base
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -82,6 +88,7 @@ class Fetched:
     # REQ-68: pieces pasted into one canvas of `header`'s size: (file, HDU, x offset, y offset) of each piece's
     # pixel (0, 0) in the canvas. Each piece is linearised on its own before pasting.
     stitch: list[tuple[Path, int, int, int]] = field(default_factory=list)
+    url: str = ""                                     # the address actually read, if not the product's own
 
 
 @dataclass
@@ -120,6 +127,11 @@ class Archive(ABC):
     @abstractmethod
     def search(self, target: Target, radius_deg: float) -> list[Product]:
         """Return combined, public, linear science images whose footprint contains the target's centre (REQ-14)."""
+
+    def elsewhere(self, target: Target) -> list[Product]:
+        """REQ-71: images overlapping `target`'s disc that can form off-centre sets; each carries its `region`
+        and `grid`. Grouping into sets happens in spots.py."""
+        return []
 
     def inside(self, target: Target, min_filters: int) -> list[InsideGroup]:
         """REQ-70: colour sets of other targets inside `target` (images that overlap it but miss its centre)."""

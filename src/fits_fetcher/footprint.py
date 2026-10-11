@@ -143,6 +143,93 @@ def coverage(regions: list[str], ra: float, dec: float, size_arcmin: float | Non
     return inside / len(pts)
 
 
+def tangent_arcsec(ras, decs, ra0: float, dec0: float):
+    """Vectorised gnomonic projection around (ra0, dec0), in arcsec (x east, y north). Arrays in, arrays out."""
+    import numpy as np
+
+    r, d = np.radians(np.asarray(ras, dtype=float)), np.radians(np.asarray(decs, dtype=float))
+    r0, d0 = math.radians(ra0), math.radians(dec0)
+    cos_c = np.sin(d0) * np.sin(d) + np.cos(d0) * np.cos(d) * np.cos(r - r0)
+    x = np.cos(d) * np.sin(r - r0) / cos_c
+    y = (np.cos(d0) * np.sin(d) - np.sin(d0) * np.cos(d) * np.cos(r - r0)) / cos_c
+    return np.degrees(x) * 3600, np.degrees(y) * 3600
+
+
+def sky_from_tangent(xs, ys, ra0: float, dec0: float) -> list[tuple[float, float]]:
+    """Inverse of tangent_arcsec for a list of points."""
+    return _offsets(ra0, dec0, [(x / 3600, y / 3600) for x, y in zip(xs, ys)])
+
+
+def polygons_arcsec(s_region: str, ra0: float, dec0: float) -> list:
+    """The POLYGON shapes of an s_region projected around (ra0, dec0): a list of (n, 2) arrays in arcsec."""
+    import numpy as np
+
+    out = []
+    for kind, nums in _shapes(s_region):
+        if kind == "POLYGON" and len(nums) >= 6:
+            x, y = tangent_arcsec(nums[0::2], nums[1::2], ra0, dec0)
+            out.append(np.column_stack([x, y]))
+    return out
+
+
+def inside_mask(polygons: list, xs, ys):
+    """Which of the points (xs, ys) lie inside any of `polygons` (even-odd rule, so concave outlines work)."""
+    import numpy as np
+
+    xs, ys = np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
+    mask = np.zeros(xs.shape, dtype=bool)
+    for poly in polygons:
+        (x_lo, y_lo), (x_hi, y_hi) = poly.min(axis=0), poly.max(axis=0)
+        near = (xs >= x_lo) & (xs <= x_hi) & (ys >= y_lo) & (ys <= y_hi)
+        if not near.any():
+            continue
+        px, py = xs[near], ys[near]
+        hit = np.zeros(px.shape, dtype=bool)
+        for (x1, y1), (x2, y2) in zip(poly, np.roll(poly, -1, axis=0)):
+            if y1 == y2:
+                continue
+            crosses = (y1 > py) != (y2 > py)
+            hit ^= crosses & (px < x1 + (py - y1) * (x2 - x1) / (y2 - y1))
+        mask[near] |= hit
+    return mask
+
+
+def position_angle_deg(ra0: float, dec0: float, ra: float, dec: float) -> float:
+    """Direction from (ra0, dec0) to (ra, dec), degrees east of north."""
+    r0, d0, r, d = map(math.radians, (ra0, dec0, ra, dec))
+    pa = math.atan2(math.sin(r - r0), math.cos(d0) * math.tan(d) - math.sin(d0) * math.cos(r - r0))
+    return math.degrees(pa) % 360
+
+
+def compass(pa_deg: float) -> str:
+    """8-point compass name for a position angle: 0 → N, 90 → E."""
+    return ("N", "NE", "E", "SE", "S", "SW", "W", "NW")[int((pa_deg + 22.5) // 45) % 8]
+
+
+def points_box(header, points: list[tuple[float, float]], shape: tuple[int, int]
+               ) -> tuple[tuple[int, int, int, int], bool]:
+    """Pixel box enclosing sky `points`: ((x0, x1, y0, y1), clipped), zero-based, end-exclusive (REQ-71).
+
+    Images on one pixel grid get the same box from the same points, so they stay pixel-aligned (REQ-60).
+    """
+    import warnings
+
+    import numpy as np
+    from astropy.wcs import WCS, FITSFixedWarning
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        w = WCS(header).celestial
+    px = w.all_world2pix(np.asarray(points, dtype=float), 0)
+    x0, y0 = (math.floor(v + 0.5) for v in px.min(axis=0))
+    x1, y1 = (math.floor(v + 0.5) + 1 for v in px.max(axis=0))
+    ny, nx = shape
+    box = (max(0, x0), min(nx, x1), max(0, y0), min(ny, y1))
+    if box[0] >= box[1] or box[2] >= box[3]:
+        raise ValueError("The shared area lies outside this image.")
+    return box, box != (x0, x1, y0, y1)
+
+
 def pixel_box(header, ra: float, dec: float, size_arcmin: float, shape: tuple[int, int] | None
               ) -> tuple[tuple[int, int, int, int], bool]:
     """Square pixel box centred on (ra, dec): ((x0, x1, y0, y1), clipped), zero-based, end-exclusive.

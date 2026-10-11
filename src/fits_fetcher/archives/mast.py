@@ -18,13 +18,17 @@ Selection rules come from verification steps 01, 05 and 07 (verify/FINDINGS.md) 
   in parallel with the main query, which stays at the object's centre. For each skycell the app fetches either
   a cutout of just the part inside the box (the PS1 cutout service returns linear 32-bit floats on the same
   pixel grid, checked 2026-10-10) or the whole compressed file, whichever is smaller.
-- Objects inside a large object (REQ-70) come from a separate query capped at INSIDE_MAX_RADIUS_DEG.
+- Objects inside a large object (REQ-70) and off-centre sets (REQ-71) come from one shared query of the object's
+  disc, capped at INSIDE_MAX_RADIUS_DEG. Off-centre candidates always include HST mosaics (most same-grid groups
+  away from the centre exist only as mosaics; M35, verification step 16) and are cut to the area their filters
+  share: single-visit images are fetched whole and cut, mosaics only for the rows of that area.
 """
 from __future__ import annotations
 
 import logging
 import math
 import re
+import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -38,7 +42,7 @@ from astroquery.mast import Observations
 
 from fits_fetcher import filters, footprint
 from fits_fetcher.archives.base import Archive, ArchiveError, Fetched, InsideGroup, Product, Target
-from fits_fetcher.transfer import Progress, Transfer
+from fits_fetcher.transfer import Progress, Transfer, TransferError
 
 log = logging.getLogger(__name__)
 DOWNLOAD = "https://mast.stsci.edu/api/v0.1/Download/file?uri="
@@ -162,6 +166,11 @@ def _float(v) -> float | None:
 class MastArchive(Archive):
     name = "MAST"
 
+    def __init__(self, settings):
+        super().__init__(settings)
+        self._around_lock = threading.Lock()
+        self._around_cache: dict[tuple, list] = {}
+
     def _collections(self) -> list[str]:
         return [c for c in self.settings.mast_collections if c in INSTRUMENTS]
 
@@ -174,10 +183,10 @@ class MastArchive(Archive):
         except Exception as e:
             raise ArchiveError(f"MAST search failed: {e}") from e
 
-    def _selected(self, row, collections: list[str]) -> bool:
+    def _selected(self, row, collections: list[str], mosaics: bool | None = None) -> bool:
         coll = _text(row["obs_collection"])
         return (coll in collections and _allowed(coll, _text(row["instrument_name"]))
-                and self._wanted_family(row) and bool(filters.effective_filter(_text(row["filters"]))))
+                and self._wanted_family(row, mosaics) and bool(filters.effective_filter(_text(row["filters"]))))
 
     def search(self, target: Target, radius_deg: float) -> list[Product]:
         pointed = [c for c in self._collections() if c != "PS1"]
@@ -239,14 +248,33 @@ class MastArchive(Archive):
             centre_ra=target.ra, centre_dec=target.dec, offset_arcmin=0.0, grid=f"PS1 projection cell {cell} box",
             coverage=footprint.coverage([_text(r["s_region"]) for r in rows], target.ra, target.dec, target.size_arcmin))
 
-    # ---------- objects inside (REQ-70) ----------
-    def inside(self, target: Target, min_filters: int) -> list[InsideGroup]:
+    # ---------- the object's disc: objects inside (REQ-70) and off-centre sets (REQ-71) ----------
+    def _around(self, target: Target) -> list:
+        """One query of the object's disc (capped), shared by inside() and elsewhere(): MAST took 30 s for M35."""
         pointed = [c for c in self._collections() if c != "PS1"]
         if not target.size_arcmin or not pointed:
             return []
-        radius = min(target.size_arcmin / 2 / 60, INSIDE_MAX_RADIUS_DEG)
+        key = (target.ra, target.dec, target.size_arcmin, tuple(pointed))
+        with self._around_lock:
+            if key not in self._around_cache:
+                radius = min(target.size_arcmin / 2 / 60, INSIDE_MAX_RADIUS_DEG)
+                self._around_cache[key] = list(self._query(target, radius, pointed))
+            return self._around_cache[key]
+
+    def elsewhere(self, target: Target) -> list[Product]:
+        pointed = [c for c in self._collections() if c != "PS1"]
+        out = []
+        for r in self._around(target):
+            if self._selected(r, pointed, mosaics=True) and _float(r["s_ra"]) is not None:
+                p = self._product(r, target, coverage=False)
+                if p.grid and p.region:  # only images known to share a pixel grid can form a set (REQ-60)
+                    out.append(p)
+        return out
+
+    def inside(self, target: Target, min_filters: int) -> list[InsideGroup]:
+        pointed = [c for c in self._collections() if c != "PS1"]
         groups = defaultdict(list)
-        for r in self._query(target, radius, pointed):
+        for r in self._around(target):
             if (not self._selected(r, pointed) or _float(r["s_ra"]) is None
                     or footprint.contains(_text(r["s_region"]), target.ra, target.dec)):  # those are in the results
                 continue
@@ -261,14 +289,16 @@ class MastArchive(Archive):
                                      ra=_float(rs[0]["s_ra"]), dec=_float(rs[0]["s_dec"])))
         return found
 
-    def _wanted_family(self, row) -> bool:
+    def _wanted_family(self, row, mosaics: bool | None = None) -> bool:
+        """REQ-58 product families; `mosaics` overrides the "Also show HST mosaics" switch (REQ-71)."""
         if _text(row["obs_collection"]) != "HST":
             return True
         obs_id = _text(row["obs_id"]).lower()
         if "_total_" in obs_id or obs_id.endswith("_coarse-all"):
             return False
         family = hst_family(obs_id)
-        return family == "single-visit" or (family == "mosaic" and self.settings.hst_show_mosaics)
+        show_mosaics = self.settings.hst_show_mosaics if mosaics is None else mosaics
+        return family == "single-visit" or (family == "mosaic" and show_mosaics)
 
     def _mosaic_box_arcmin(self, target: Target) -> float:
         return footprint.box_arcmin(target.size_arcmin, self.settings.cutout_default_arcmin)
@@ -283,22 +313,38 @@ class MastArchive(Archive):
                 primary, header = h[0].header.copy(), h[1].header.copy()
             return Fetched(primary, header, path, hdu=1, files=[path])
 
-        loc = transfer.locate_hdu(product.url, product.science_extension)
+        try:
+            loc = transfer.locate_hdu(product.url, product.science_extension)
+        except TransferError as e:
+            # Some WFC3/UVIS and ACS/WFC images have no CTE-corrected _drc, only _drz (M35, verification step 16).
+            if not (product.url.endswith("_drc.fits") and "HTTP 404" in str(e)):
+                raise
+            product = replace(product, url=product.url.removesuffix("_drc.fits") + "_drz.fits")
+            loc = transfer.locate_hdu(product.url, product.science_extension)
         header = loc.header.copy()
+        rows, cols = header["NAXIS2"], header["NAXIS1"]
+        if product.cut:  # REQ-71: the area all filters of an off-centre set share
+            try:
+                (x0, x1, y0, y1), clipped = footprint.points_box(header, product.cut, (rows, cols))
+            except ValueError as e:
+                raise ArchiveError(str(e)) from e
         if not product.is_mosaic:
             path = transfer.fetch(product.url, loc.data_offset, loc.data_size, progress)
-            return Fetched(loc.primary, header, path, files=[path])
+            if product.cut:
+                return Fetched(loc.primary, header, path, files=[path], box=(x0, x1, y0, y1), box_clipped=clipped,
+                               url=product.url)
+            return Fetched(loc.primary, header, path, files=[path], url=product.url)
 
         # REQ-58: only the rows of the box around the object (plus a margin), each a full mosaic row.
-        rows, cols = header["NAXIS2"], header["NAXIS1"]
-        (x0, x1, y0, y1), clipped = footprint.pixel_box(header, target.ra, target.dec, box_arcmin, (rows, cols))
+        if not product.cut:
+            (x0, x1, y0, y1), clipped = footprint.pixel_box(header, target.ra, target.dec, box_arcmin, (rows, cols))
         r0, r1 = max(0, y0 - MOSAIC_MARGIN_PX), min(rows, y1 + MOSAIC_MARGIN_PX)
         row_bytes = abs(header["BITPIX"]) // 8 * cols
         path = transfer.fetch(product.url, loc.data_offset + r0 * row_bytes, (r1 - r0) * row_bytes, progress)
         header["NAXIS2"] = r1 - r0
         header["CRPIX2"] = header["CRPIX2"] - r0
         return Fetched(loc.primary, header, path, files=[path], box=(x0, x1, y0 - r0, y1 - r0), box_clipped=clipped,
-                       notes=[f"Rows {r0 + 1}-{r1} of the {cols} x {rows} px mosaic {product.obs_id} fetched."])
+                       url=product.url, notes=[f"Rows {r0 + 1}-{r1} of the {cols} x {rows} px mosaic {product.obs_id} fetched."])
 
     def _fetch_ps1_box(self, product: Product, target: Target, transfer: Transfer, progress: Progress) -> Fetched:
         """REQ-68: read the skycells' headers, fetch the part of each inside the box, describe the canvas."""
@@ -355,7 +401,7 @@ class MastArchive(Archive):
                 "each piece linear before stitching.")
         return Fetched(fits.Header(), canvas, paths[0], files=paths, stitch=stitch, notes=[note])
 
-    def _product(self, o, target: Target) -> Product:
+    def _product(self, o, target: Target, coverage: bool = True) -> Product:
         coll = _text(o["obs_collection"])
         inst = _text(o["instrument_name"])
         obs_id = _text(o["obs_id"])
@@ -377,19 +423,23 @@ class MastArchive(Archive):
             box_px = int(self._mosaic_box_arcmin(target) * 60 / MOSAIC_PIXEL_SCALE)
             size = min(box_px, SKYCELL_WIDTH_PX) * SKYCELL_WIDTH_PX * 4
             level = "HST mosaic (cut around object)"
+            width = SKYCELL_WIDTH_PX
         elif coll == "PS1":
-            size, level = PS1_STACK_BYTES, "PS1 stack"
+            size, level, width = PS1_STACK_BYTES, "PS1 stack", None
         else:
             area = footprint.area_deg2(_text(o["s_region"]))
             size = int(area * (3600 / scale) ** 2 * 4) if area and scale else None
             level = "HST single-visit " + url.rsplit("_", 1)[-1][:3] if coll == "HST" else "JWST i2d"
+            width = None
         return Product(
             archive=self.name, collection=coll, telescope={"PS1": "Pan-STARRS1"}.get(coll, coll), instrument=inst,
             filter=filt, obs_id=obs_id, url=url,
             wavelength_um=wl, bandwidth_um=(hi - lo) / 1000 if lo and hi else None, band_type=band,
             exptime_s=_float(o["t_exptime"]), obs_date=Time(t_min, format="mjd").isot[:10] if t_min else "",
-            pixel_scale_arcsec=scale, size_bytes=size, is_mosaic=mosaic, product_level=level,
+            pixel_scale_arcsec=scale, size_bytes=size, width=width, is_mosaic=mosaic, product_level=level,
             centre_ra=c_ra, centre_dec=c_dec, offset_arcmin=offset, grid=grid_key(coll, filt, obs_id),
             thumbnail_url=_http(_text(o["jpegURL"])), science_extension=1 if coll == "PS1" else "SCI",
-            coverage=footprint.coverage([_text(o["s_region"])], target.ra, target.dec, target.size_arcmin),
+            coverage=(footprint.coverage([_text(o["s_region"])], target.ra, target.dec, target.size_arcmin)
+                      if coverage else None),
+            region=_text(o["s_region"]),
         )

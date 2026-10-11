@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { info: null, target: null, source: null, sets: [], selected: new Map(),
+const state = { info: null, target: null, source: null, sets: [], elsewhere: [], selected: new Map(),
   job: null, jobSource: null, dl: new Map() /* key → item status from the running or last download */ };
 
 function el(tag, attrs = {}, ...children) {
@@ -45,7 +45,12 @@ const fmt = {
   position(ra, dec) {
     return `RA ${ra.toFixed(5)}° (${fmt.hms(ra)}), Dec ${dec >= 0 ? "+" : ""}${dec.toFixed(5)}° (${fmt.dms(dec)})`;
   },
-  cover(f) { return f == null ? "—" : f >= 0.995 ? "100%" : `${Math.floor(f * 100)}%`; },
+  cover(f) {
+    if (f == null) return "—";
+    if (f >= 0.995) return "100%";
+    if (f > 0 && f < 0.001) return "<0.1%";
+    return f < 0.1 ? `${(Math.floor(f * 1000) / 10).toFixed(1)}%` : `${Math.floor(f * 100)}%`;
+  },
   offset(arcmin) { return arcmin < 1 ? `${(arcmin * 60).toFixed(1)}″` : `${arcmin.toFixed(2)}′`; },
 };
 
@@ -135,6 +140,9 @@ $("search").addEventListener("click", () => {
 
   $("archive-status").replaceChildren();
   $("results").replaceChildren();
+  state.sets = []; state.elsewhere = [];
+  $("elsewhere").replaceChildren();
+  $("elsewhere").hidden = true;
   $("inside").replaceChildren();
   $("inside").hidden = true;
   $("results-summary").textContent = "Searching…";
@@ -147,6 +155,7 @@ $("search").addEventListener("click", () => {
   state.source = src;
   src.addEventListener("status", (e) => showStatus(JSON.parse(e.data)));
   src.addEventListener("sets", (e) => showSets(JSON.parse(e.data)));
+  src.addEventListener("elsewhere", (e) => showElsewhere(JSON.parse(e.data)));
   src.addEventListener("inside", (e) => showInside(JSON.parse(e.data)));
   src.addEventListener("end", () => finishSearch());
   src.onerror = () => { if (state.source) finishSearch("The connection to FITS-fetcher was lost."); };
@@ -164,8 +173,9 @@ function finishSearch(message) {
     li.className = "failed"; li.textContent = `${li.dataset.archive}: stopped.`;
   }
   if (message) $("results-summary").textContent = message;
-  else if (!state.sets.length) $("results-summary").textContent =
-    "No colour sets found. Try fewer minimum filters, allow mixing instruments, or another archive.";
+  else if (!state.sets.length) $("results-summary").textContent = state.elsewhere.length
+    ? `No colour sets contain the centre of ${objectName()}; see the sets elsewhere in it below.`
+    : "No colour sets found. Try fewer minimum filters, allow mixing instruments, or another archive.";
 }
 
 function showStatus(s) {
@@ -199,7 +209,39 @@ function setCoverage(set) {
   if (set.coverage == null) return null;
   const whole = set.coverage >= 0.995;
   return el("span", { class: `chip ${whole ? "whole" : ""}`, title: "Lowest coverage over the filters, taking the best image in each" },
-    whole ? `whole ${objectName()} in every filter` : `at least ${fmt.cover(set.coverage)} of ${objectName()} in every filter`);
+    whole ? `whole ${objectName()} in every filter`
+      : set.coverage > 0 && set.coverage < 0.001 ? `under 0.1% of ${objectName()} in every filter`
+      : `at least ${fmt.cover(set.coverage)} of ${objectName()} in every filter`);
+}
+
+// ---------- same-grid sets away from the centre (REQ-71) ----------
+function showElsewhere(data) {
+  const box = $("elsewhere");
+  if (data.state === "searching") {
+    box.replaceChildren(el("p", { class: "muted" }, `Looking for colour sets elsewhere in ${objectName()}…`));
+    box.hidden = false;
+    return;
+  }
+  state.elsewhere = data.sets;
+  const failed = data.failed?.length ? el("p", { class: "muted" }, `Couldn't look everywhere: ${data.failed.join(", ")}.`) : null;
+  if (!data.sets.length) {
+    box.replaceChildren(...(failed ? [failed] : []));
+    box.hidden = !failed;
+    return;
+  }
+  box.replaceChildren(el("h3", {}, `Elsewhere in ${objectName()}`),
+    el("p", { class: "muted" }, `Images that miss the centre, where filters on one pixel grid share an area. ` +
+      `Each image is cut to the area all filters of its set share, so the set stacks without registration.`),
+    ...(failed ? [failed] : []), ...data.sets.map(renderSet));
+  box.hidden = false;
+  updateSelection();
+}
+
+function setPosition(set) {
+  if (!set.position) return null;
+  const p = set.position;
+  return el("span", { class: "chip", title: `Shared area centred at ${fmt.position(p.ra, p.dec)}` },
+    `${fmt.offset(p.offset_arcmin)} ${p.direction} of centre · ${p.area_arcmin2.toFixed(1)} arcmin²`);
 }
 
 // ---------- other objects inside (REQ-70) ----------
@@ -266,8 +308,9 @@ function renderSet(set) {
     for (const p of row.products) body.append(...renderProduct(p, gridOf.get(p.key)));
   }
   return el("details", { class: "set", open: true },
-    el("summary", {}, el("span", { class: "set-name" }, set.name.replaceAll("_", " · ")),
-      el("span", { class: "muted" }, set.readiness), setCoverage(set), allBtn),
+    // An off-centre set's folder name ends in its position, which the position chip shows instead.
+    el("summary", {}, el("span", { class: "set-name" }, (set.position ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
+      el("span", { class: "muted" }, set.readiness), setPosition(set), setCoverage(set), allBtn),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
     el("div", { class: "table-wrap" }, el("table", {},
@@ -289,7 +332,8 @@ function renderProduct(p, grid) {
     : null;
   const details = el("tr", { ...mark, hidden: true }, el("td", {}), el("td", { class: "details-cell", colspan: 9 },
     `Telescope: ${p.telescope} · Bandwidth: ${fmt.um(p.bandwidth_um)} · Product: ${p.product_level} · ` +
-    `Observation: ${p.obs_id}${p.is_mosaic ? " · Cut around the object from a multi-visit mosaic" : ""}`, centre));
+    `Observation: ${p.obs_id}` + (p.cut?.length ? ` · Cut to the area all filters of its set share${p.is_mosaic ? ", from a multi-visit mosaic" : ""}`
+      : p.is_mosaic ? " · Cut around the object from a multi-visit mosaic" : ""), centre));
   const more = el("button", { type: "button", class: "secondary", onclick: () => { details.hidden = !details.hidden; } }, "Details");
   return [el("tr", mark,
     el("td", {}, box), el("td", {}, thumb),
@@ -359,7 +403,8 @@ function paintStatus(node, it) {
 }
 
 function setsContaining(key) {
-  return state.sets.filter((s) => s.rows.some((r) => r.products.some((p) => p.key === key))).map((s) => s.name);
+  return [...state.sets, ...state.elsewhere]
+    .filter((s) => s.rows.some((r) => r.products.some((p) => p.key === key))).map((s) => s.name);
 }
 
 $("download").addEventListener("click", async () => {
