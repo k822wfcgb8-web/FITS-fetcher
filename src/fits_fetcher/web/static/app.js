@@ -364,8 +364,16 @@ const GRID_COLOURS = 6;
 const gridStyle = (i) => `--gc: var(--grid-${i % GRID_COLOURS})`;
 
 function renderSet(set) {
-  const allBtn = el("button", { type: "button", class: "secondary", onclick: (e) => { e.preventDefault(); selectWholeSet(set); } },
-    "Select deepest in every filter");
+  // REQ-83: one tick box for every image in the set; the deepest-per-filter button only matters when a filter has several.
+  const products = set.rows.flatMap((row) => row.products);
+  const allBox = el("input", { type: "checkbox", class: "set-all", onchange: (e) => { const on = e.target.checked; for (const p of products) toggle(p, on); } });
+  allBox.products = products;
+  const allTick = el("label", { class: "check set-all-label", onclick: (e) => e.stopPropagation() }, allBox,
+    `All ${products.length} image${products.length === 1 ? "" : "s"}`);
+  const allBtn = set.rows.some((row) => row.products.length > 1)
+    ? el("button", { type: "button", class: "secondary", onclick: (e) => { e.preventDefault(); selectWholeSet(set); } },
+      "Select deepest in every filter")
+    : null;
   const gridOf = new Map();
   set.grids.forEach((g, i) => { for (const k of g.product_keys) gridOf.set(k, { ...g, i }); });
   const legend = set.grids.length ? el("div", { class: "grids" }, set.grids.map((g, i) =>
@@ -389,7 +397,7 @@ function renderSet(set) {
     // An off-centre set's folder name ends in its position, a planet set's in its visit; their chips show those.
     el("summary", {}, el("span", { class: "set-name" }, ...heading, " · ",
       (set.position || set.visit ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
-      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), allBtn,
+      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), allTick, allBtn,
       colourHint(set)),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
@@ -449,6 +457,11 @@ function updateSelection() {
   const total = items.reduce((s, p) => s + (p.size_bytes || 0), 0);
   const limit = (state.info?.settings.size_warning_gb || 5) * 1e9;
   $("download").disabled = !items.length || downloading();
+  for (const box of document.querySelectorAll("input.set-all")) {
+    const ticked = box.products.filter((p) => state.selected.has(p.key)).length;
+    box.checked = ticked > 0 && ticked === box.products.length;
+    box.indeterminate = ticked > 0 && ticked < box.products.length;
+  }
   $("selection-summary").textContent = items.length
     ? `${items.length} image${items.length === 1 ? "" : "s"} selected, about ${fmt.size(total)} to download.` +
       (total > limit ? ` ⚠ Over your ${fmt.size(limit)} warning limit.` : "")
