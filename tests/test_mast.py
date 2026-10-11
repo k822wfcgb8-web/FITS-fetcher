@@ -80,6 +80,25 @@ def test_grid_key(coll, filt, obs_id, grid):
     assert mast.grid_key(coll, filt, obs_id) == grid
 
 
+TWO_PIECES = COVERS + " POLYGON 202.60 47.10 202.80 47.10 202.80 47.30 202.60 47.30"
+
+
+@pytest.mark.parametrize("inst, region, gap", [
+    ("NIRCAM/IMAGE", TWO_PIECES, True),   # one pointing: modules A and B with the gap between (MCG-01-26-030)
+    ("NIRCAM/IMAGE", COVERS, False),      # other pointings filled the gap (MACS J0553, VENUS)
+    ("MIRI/IMAGE", TWO_PIECES, False),    # MIRI has one module
+    ("NIRCAM/IMAGE", "", False),
+])
+def test_module_gap(inst, region, gap):
+    assert mast.module_gap(inst, region) is gap
+
+
+def test_module_gap_reaches_the_product(fake_mast):
+    fake_mast([{"obs_collection": "JWST", "instrument_name": "NIRCAM/IMAGE", "filters": "F444W",
+                "obs_id": "jw1-o1_t1_nircam_clear-f444w", "s_region": TWO_PIECES, "em_min": 3900.0, "em_max": 5000.0}])
+    assert mast.MastArchive(Settings()).search(M51, 0.02)[0].module_gap
+
+
 def test_image_centre_and_offset(fake_mast):
     fake_mast([{"obs_id": "hst_1_01_acs_wfc_f814w_j1", "s_ra": M51.ra, "s_dec": M51.dec + 0.05}])
     p = mast.MastArchive(Settings()).search(M51, 0.02)[0]

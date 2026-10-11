@@ -96,6 +96,13 @@ def hst_family(obs_id: str) -> str:
     return "classic"
 
 
+def module_gap(instrument: str, s_region: str) -> bool:
+    """REQ-84: a NIRCam image whose footprint is two or more separate pieces never covered the ~44″ gap
+    between the camera's modules A and B; one piece means other pointings filled it (MACS J0553, VENUS)."""
+    return instrument.upper().startswith("NIRCAM") and \
+        sum(kind == "POLYGON" for kind, _ in footprint.shapes(s_region)) >= 2
+
+
 def grid_key(collection: str, filt: str, obs_id: str) -> str:
     """Name of the pixel grid an image is on; same name = stacks without registration (REQ-60, verification 12).
 
@@ -479,4 +486,5 @@ class MastArchive(Archive):
             coverage=(footprint.coverage([_text(o["s_region"])], target.ra, target.dec, target.size_arcmin)
                       if coverage and not moving else None),
             region=_text(o["s_region"]), visit=visit_key(coll, obs_id) if moving else "",
+            module_gap=module_gap(inst, _text(o["s_region"])),
         )

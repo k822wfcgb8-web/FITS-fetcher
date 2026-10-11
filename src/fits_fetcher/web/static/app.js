@@ -311,6 +311,15 @@ function setVisit(set) {
     `Visit ${set.visit}${set.date ? ` · ${set.date}` : ""}`);
 }
 
+// REQ-84: NIRCam's two modules sit side by side with a ~44″ strip between them that these images never saw.
+const GAP_TITLE = "NIRCam has two camera modules side by side. This observation didn't cover the ~44″ strip between them, " +
+  "so the image is two separate squares with a blank band between.";
+const gapChip = () => el("span", { class: "chip warn", title: GAP_TITLE }, "2 modules, gap not covered");
+
+function setGap(set) {
+  return set.rows.some((row) => row.products.some((p) => p.module_gap)) ? gapChip() : null;
+}
+
 function setPosition(set) {
   if (!set.position) return null;
   const p = set.position;
@@ -397,7 +406,7 @@ function renderSet(set) {
     // An off-centre set's folder name ends in its position, a planet set's in its visit; their chips show those.
     el("summary", {}, el("span", { class: "set-name" }, ...heading, " · ",
       (set.position || set.visit ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
-      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), allTick, allBtn,
+      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), setGap(set), allTick, allBtn,
       colourHint(set)),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
@@ -428,7 +437,8 @@ function renderProduct(p, grid) {
     el("td", {}, p.filter, " ", el("span", { class: "chip" }, p.band_type),
       grid ? el("div", {}, el("span", { class: "chip grid", title: `Same pixel grid as the other Grid ${grid.label} images` },
         `Grid ${grid.label}`)) : null),
-    el("td", {}, ...source(p.archive, p.collection), ` · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null),
+    el("td", {}, ...source(p.archive, p.collection), ` · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null,
+      p.module_gap ? el("div", {}, gapChip()) : null),
     el("td", {}, fmt.exp(p.exptime_s)),
     el("td", { title: coverageTitle() }, fmt.cover(p.coverage)),
     el("td", {}, p.pixel_scale_arcsec ? `${p.pixel_scale_arcsec}″` : "?"),

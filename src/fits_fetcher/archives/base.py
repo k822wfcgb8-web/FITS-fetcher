@@ -68,6 +68,7 @@ class Product:
     # all of them are trimmed to the same box.
     grid_regions: list[str] = field(default_factory=list)
     visit: str = ""                     # planets and moons (REQ-80): only images of one visit form a set
+    module_gap: bool = False            # REQ-84: NIRCam's two modules with the gap between them not covered
 
     @property
     def key(self) -> str:
