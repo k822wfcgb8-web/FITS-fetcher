@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.11 (approved)
+**Version:** 1.12 (approved)
 **Date:** 2026-10-11
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -57,6 +57,9 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | S-07 ✅ | A progress display for searches and downloads, with a Cancel button. |
 | S-08 ✅ | A settings panel for output folder, cache location, and download limits. |
 | REQ-64 | *(Resolved Q-44)* The settings panel is a **dialog** opened from a **Settings** button in the page header, so the current search and results stay as they are. It holds: output and cache folders; download limits (size warning, parallel downloads per archive, archive timeout); **search defaults** (minimum filters, instrument mixing, "Also show HST mosaics", pixel-scale warning ratio); and **processing defaults** (star-core repair and its size limit, cutout and the box size used when an object's size is unknown). Collection lists stay in the settings file only. |
+| REQ-72 | *(Resolved Q-58, after the NGC 3675 Pan-STARRS set was taken for Hubble)* When MAST is ticked, the search panel shows a **tick box for each MAST telescope** in the `mast_collections` setting (Hubble, JWST, Pan-STARRS1), all ticked by default. Only the ticked telescopes are searched; MAST is skipped if none is ticked. The setting's list itself still lives in the settings file only (REQ-64). |
+| REQ-73 | *(Resolved Q-58)* Every **set heading and result row names the telescope** as well as the instrument, e.g. `MAST · Pan-STARRS1 · GPC1` or `MAST · Hubble · ACS/WFC`, so the source is clear without opening the details. Folder names (S-29) are unchanged. |
+| REQ-74 | *(Resolved Q-59, Q-60)* Each telescope name, **both in the tick boxes and in the results**, is a link that opens a **pop-up fact sheet**: aperture, where it is, years active, the cameras FITS-fetcher uses with their pixel scales, wavelength range, **what artifacts to expect** in its images, and a link to the archive's mission page. |
 | REQ-65 | *(Resolved Q-45)* Each folder has a **path box and a Choose… button** that opens the system folder dialog. A typed path is accepted if the folder exists or can be created and is writable. |
 | REQ-66 | *(Resolved Q-46)* Changes take effect on **Save**; **Cancel** discards them; **Reset to defaults** fills in the built-in values (still applied only on Save). After saving, any changed search or processing default is applied to the search panel and download bar. A download already running keeps the settings it started with. |
 | REQ-27 | *(Resolved Q-05)* Results show a **preview thumbnail** for each image. If the archive supplies one, it is used. If not, the app tries to **create one**, without downloading the full science file: from a small cutout or low-resolution image service where one exists (e.g., an archive cutout service or the CDS hips2fits service; *availability per dataset to verify*). If neither is possible, a placeholder is shown, and a thumbnail is made from the science image once it has been downloaded. Thumbnails are display-only and never saved as science data. |
@@ -309,6 +312,9 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-55~~ | Area delivered for an off-centre set: **resolved → the area all its filters share (REQ-71)** | — |
 | ~~Q-56~~ | Placement and search area: **resolved → own section below the results; disc capped at 15′ (REQ-71)** | — |
 | ~~Q-57~~ | Tilted shared area: **resolved → box around it, blank corners kept (REQ-71)** | — |
+| ~~Q-58~~ | Which MAST telescope a result comes from (NGC 3675's GPC1 set looked like Hubble): **resolved → telescope tick boxes under MAST (REQ-72) and the telescope named on every set and row (REQ-73)** | — |
+| ~~Q-59~~ | Telescope information: **resolved → pop-up fact sheet including artifacts to expect (REQ-74)** | — |
+| ~~Q-60~~ | Where telescope names link to it: **resolved → tick boxes and results (REQ-74)** | — |
 
 ---
 
@@ -338,3 +344,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.9 | 2026-10-10 | Added and resolved Q-47: larger repair limit for holes next to bright stars (REQ-67), after M37 Pan-STARRS i/z showed black masked areas. |
 | 1.10 | 2026-10-10 | Added and resolved Q-48–Q-52 after the M46 search: Pan-STARRS box stitched from skycells (REQ-68), coverage shown on each row (REQ-69), objects inside a large object listed (REQ-70). |
 | 1.11 | 2026-10-11 | Added and resolved Q-53–Q-57 after the M35 search: off-centre same-grid colour sets in large objects (REQ-71); REQ-14 note. |
+| 1.12 | 2026-10-11 | Added and resolved Q-58–Q-60 after the NGC 3675 download: MAST telescope tick boxes (REQ-72), telescope named on sets and rows (REQ-73), telescope fact-sheet pop-ups (REQ-74). |

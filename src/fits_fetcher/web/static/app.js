@@ -71,10 +71,49 @@ async function init() {
       el("input", { type: "checkbox", value: name, checked: available, disabled: !available }),
       available ? name : `${name} (not built yet)`));
   }
+  buildTelescopeBoxes();
   for (const line of info.emission_lines) {
     $("line-boxes").append(el("label", { class: "check" }, el("input", { type: "checkbox", value: line }), line));
   }
 }
+
+// ---------- telescopes (REQ-72–74) ----------
+// A tick box per MAST telescope, shown while MAST is ticked. The name beside each box opens its fact sheet.
+function buildTelescopeBoxes() {
+  const box = $("telescope-boxes"), mast = document.querySelector('#archive-boxes input[value="MAST"]');
+  if (!mast || !state.info.mast_telescopes.length) return;
+  box.append(el("span", { class: "lead" }, "MAST telescopes:"),
+    ...state.info.mast_telescopes.map((c) => el("span", { class: "check" },
+      el("input", { type: "checkbox", value: c, checked: true, "aria-label": `Search ${telescopeName(c)}` }),
+      telLink(c))));
+  const show = () => { box.hidden = !mast.checked; };
+  mast.addEventListener("change", show);
+  show();
+}
+
+const telescopeName = (collection) => state.info.telescopes[collection]?.name || collection;
+
+// The telescope's name as a link to its fact sheet; plain text if there is none.
+function telLink(collection) {
+  const t = state.info.telescopes[collection];
+  if (!t) return collection;
+  return el("a", { class: "tel", href: "#", title: `About ${t.full_name}`,
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); showTelescope(collection); } }, t.name);
+}
+
+// "MAST · Hubble" for an archive and collection; the archive alone if the collection is unknown.
+const source = (archive, collection) => collection ? [`${archive} · `, telLink(collection)] : [archive];
+
+function showTelescope(collection) {
+  const t = state.info.telescopes[collection];
+  $("telescope-title").textContent = t.full_name;
+  $("telescope-facts").replaceChildren(...t.facts.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)]));
+  $("telescope-artifacts").replaceChildren(...t.artifacts.map((a) => el("li", {}, a)));
+  $("telescope-link").href = t.link;
+  $("telescope-dialog").showModal();
+}
+$("telescope-close").addEventListener("click", () => $("telescope-dialog").close());
+$("telescope-dialog").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
 // ---------- object resolution (S-10, REQ-18) ----------
 $("resolve-form").addEventListener("submit", async (e) => {
@@ -136,6 +175,7 @@ $("search").addEventListener("click", () => {
     band_type: $("band-type").value, lines: checked("#line-boxes input").join(","),
     hst_mosaics: $("hst-mosaics").checked,
   });
+  if (!$("telescope-boxes").hidden) params.set("telescopes", checked("#telescope-boxes input").join(","));
   if (t.size_arcmin) params.set("size_arcmin", t.size_arcmin);
 
   $("archive-status").replaceChildren();
@@ -262,8 +302,8 @@ function showInside(data) {
       el("div", { class: "inside-head" },
         el("button", { type: "button", class: "secondary small", onclick: () => searchInside(o) }, "Search"),
         el("strong", {}, o.name), el("span", { class: "muted" }, `${fmt.offset(o.offset_arcmin)} from the centre`)),
-      ...o.sets.map((s) => el("div", { class: "muted inside-set" },
-        `${s.archive} · ${s.instrument} · ${s.filters.length} filters (${s.filters.join(", ")})`))))));
+      ...o.sets.map((s) => el("div", { class: "muted inside-set" }, ...source(s.archive, s.collection),
+        ` · ${s.instrument} · ${s.filters.length} filters (${s.filters.join(", ")})`))))));
   box.hidden = false;
 }
 
@@ -307,14 +347,19 @@ function renderSet(set) {
         el("span", { class: "muted" }, `  (${row.products.length} image${row.products.length === 1 ? "" : "s"})`))));
     for (const p of row.products) body.append(...renderProduct(p, gridOf.get(p.key)));
   }
+  // REQ-73: the archive and telescope of every image in the set, e.g. "MAST · Pan-STARRS1".
+  const sources = new Map();
+  for (const row of set.rows) for (const p of row.products) sources.set(`${p.archive}|${p.collection}`, p);
+  const heading = [...sources.values()].flatMap((p, i) => [i ? " + " : "", ...source(p.archive, p.collection)]);
   return el("details", { class: "set", open: true },
     // An off-centre set's folder name ends in its position, which the position chip shows instead.
-    el("summary", {}, el("span", { class: "set-name" }, (set.position ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
+    el("summary", {}, el("span", { class: "set-name" }, ...heading, " · ",
+      (set.position ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
       el("span", { class: "muted" }, set.readiness), setPosition(set), setCoverage(set), allBtn),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
     el("div", { class: "table-wrap" }, el("table", {},
-      el("thead", {}, el("tr", {}, ["", "Preview", "Filter", "Archive / instrument", "Exposure", "Covers", "Pixel scale", "Download", "Date", ""]
+      el("thead", {}, el("tr", {}, ["", "Preview", "Filter", "Archive · telescope · instrument", "Exposure", "Covers", "Pixel scale", "Download", "Date", ""]
         .map((h) => el("th", {}, h)))),
       body)));
 }
@@ -340,7 +385,7 @@ function renderProduct(p, grid) {
     el("td", {}, p.filter, " ", el("span", { class: "chip" }, p.band_type),
       grid ? el("div", {}, el("span", { class: "chip grid", title: `Same pixel grid as the other Grid ${grid.label} images` },
         `Grid ${grid.label}`)) : null),
-    el("td", {}, `${p.archive} · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null),
+    el("td", {}, ...source(p.archive, p.collection), ` · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null),
     el("td", {}, fmt.exp(p.exptime_s)),
     el("td", { title: coverageTitle() }, fmt.cover(p.coverage)),
     el("td", {}, p.pixel_scale_arcsec ? `${p.pixel_scale_arcsec}″` : "?"),

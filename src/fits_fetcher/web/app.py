@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from fits_fetcher import __version__, filters, footprint, spots
+from fits_fetcher import __version__, filters, footprint, spots, telescopes
 from fits_fetcher.archives import ARCHIVES, PLANNED, ArchiveError, Product, Target
 from fits_fetcher.config import EDITABLE, Settings, validated
 from fits_fetcher.downloads import DownloadManager, Item, open_folder
@@ -70,6 +70,15 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
     settings = settings or Settings.load(settings_path)
     app = FastAPI(title="FITS-fetcher", version=__version__)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+    @app.middleware("http")
+    async def revalidate_page(request, call_next):
+        # The browser must check for a newer page, script and stylesheet on every load; otherwise after an update
+        # it can mix a cached old page with the new script, and the page breaks.
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
     known: dict[str, Product] = {}  # every product a search has returned, by key
     manager = DownloadManager(settings, ARCHIVES)
 
@@ -80,7 +89,11 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
     @app.get("/api/info")
     def info():
         return {"version": __version__, "archives": list(ARCHIVES), "planned": PLANNED,
-                "emission_lines": list(filters.EMISSION_LINES), "settings": asdict(settings)}
+                "emission_lines": list(filters.EMISSION_LINES), "settings": asdict(settings),
+                # REQ-72, REQ-74: every known telescope's fact sheet (results can name one no longer in the
+                # settings), and which MAST telescopes get a tick box.
+                "telescopes": telescopes.TELESCOPES,
+                "mast_telescopes": list(telescopes.for_collections(settings.mast_collections))}
 
     @app.get("/api/resolve")
     def resolve_name(q: str):
@@ -95,16 +108,25 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
         ra: float, dec: float, matched_id: str = "", query: str = "", size_arcmin: float | None = None,
         archives: str = "MAST", min_filters: int = Query(settings.min_filters, ge=2),
         mix_instruments: bool = settings.mix_instruments, band_type: str = "either", lines: str = "",
-        hst_mosaics: bool = settings.hst_show_mosaics,
+        hst_mosaics: bool = settings.hst_show_mosaics, telescopes: str | None = None,
     ):
         target = Target(query=query, matched_id=matched_id, ra=ra, dec=dec, size_arcmin=size_arcmin)
         run_settings = replace(settings, hst_show_mosaics=hst_mosaics)
         chosen = [a for a in archives.split(",") if a in ARCHIVES]
+        skipped = []
+        if telescopes is not None:  # REQ-72: only the ticked MAST telescopes; none ticked skips MAST
+            ticked = set(telescopes.split(","))
+            run_settings = replace(run_settings, mast_collections=[c for c in settings.mast_collections if c in ticked])
+            if "MAST" in chosen and not run_settings.mast_collections:
+                chosen.remove("MAST")
+                skipped.append("MAST")
         line_set = {line for line in lines.split(",") if line}
 
         async def stream():
             loop = asyncio.get_running_loop()
             pending, instances = {}, {}
+            for name in skipped:
+                yield _sse("status", {"archive": name, "state": "skipped", "message": f"{name}: no telescope ticked."})
             for name in chosen:
                 archive = instances[name] = ARCHIVES[name](run_settings)
                 fut = loop.run_in_executor(None, archive.search, target, QUERY_RADIUS_DEG)

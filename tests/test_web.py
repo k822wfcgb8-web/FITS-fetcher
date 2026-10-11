@@ -49,6 +49,8 @@ def test_page_and_info(client):
     info = client.get("/api/info").json()
     assert info["archives"] == ["GOOD", "BROKEN", "SLOW"]
     assert "Hα" in info["emission_lines"]
+    for path in ("/", "/static/app.js", "/static/style.css"):  # always revalidated, so updates show at once
+        assert client.get(path).headers["cache-control"] == "no-cache"
 
 
 def test_resolve(client, monkeypatch):
@@ -72,6 +74,35 @@ def test_search_streams_results_and_reports_failures(client):
     sets = [d for e, d in ev if e == "sets"][-1]["sets"]
     assert len(sets) == 1 and len(sets[0]["rows"]) == 3
     assert ev[-1][0] == "end"
+
+
+def test_info_has_telescope_fact_sheets(client):
+    info = client.get("/api/info").json()
+    assert info["mast_telescopes"] == ["HST", "JWST", "PS1"]
+    ps1 = info["telescopes"]["PS1"]
+    assert ps1["name"] == "Pan-STARRS1" and ps1["facts"] and ps1["artifacts"] and ps1["link"].startswith("https://")
+
+
+def test_search_only_ticked_mast_telescopes(monkeypatch, product):
+    seen = []
+
+    class Mast(Archive):
+        name = "MAST"
+        def search(self, target, radius_deg):
+            seen.append(self.settings.mast_collections)
+            return []
+
+    monkeypatch.setattr(webapp, "ARCHIVES", {"MAST": Mast})
+    settings = Settings()
+    c = TestClient(webapp.create_app(settings))
+    c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST", "telescopes": "PS1,HST"})
+    c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST"})  # no choice sent: all of them
+    assert seen == [["HST", "PS1"], ["HST", "JWST", "PS1"]]
+    assert settings.mast_collections == ["HST", "JWST", "PS1"]  # the saved settings are untouched
+
+    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST", "telescopes": ""}).text)
+    assert ("status", {"archive": "MAST", "state": "skipped", "message": "MAST: no telescope ticked."}) in ev
+    assert len(seen) == 2 and ev[-1][0] == "end"
 
 
 def test_quit(client):

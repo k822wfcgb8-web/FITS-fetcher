@@ -92,9 +92,20 @@ button.small { padding: 2px 10px; font-size: 12px; }
 .inside-list li { display: grid; gap: 2px; }
 .inside-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .inside-set { font-size: 13px; padding-left: 4px; }
-dialog#settings-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+dialog#settings-dialog, dialog#telescope-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
   width: min(640px, calc(100% - 32px)); max-height: calc(100vh - 48px); padding: 20px; overflow: auto; }
-dialog#settings-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+dialog#settings-dialog::backdrop, dialog#telescope-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+.telescopes { gap: 6px 16px; padding-left: 4px; font-size: 14px; }
+.telescopes .lead { color: var(--muted); font-size: 13px; }
+.telescopes .check { display: flex; align-items: center; gap: 6px; }
+a.tel { color: var(--accent); text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+a.tel:hover { text-decoration-style: solid; }
+#telescope-dialog a { color: var(--accent); }
+#telescope-dialog h3 { font-size: 14px; margin: 14px 0 6px; }
+#telescope-dialog ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
 .field { display: grid; gap: 4px; }
 .field .row { flex-direction: row; align-items: center; gap: 8px; }  /* stays a row on narrow screens too */
 .field input.grow { min-width: 0; }
@@ -105,4 +116,6 @@ dialog#settings-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 @media (max-width: 640px) {
   .row { flex-direction: column; align-items: stretch; }
   .hide-narrow { display: none; }
+  .facts { grid-template-columns: 1fr; }
+  .facts dd { margin-bottom: 6px; }
 }

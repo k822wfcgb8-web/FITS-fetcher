@@ -28,6 +28,18 @@
     </form>
   </dialog>
 
+  <dialog id="telescope-dialog" aria-labelledby="telescope-title">
+    <h2 id="telescope-title"></h2>
+    <dl id="telescope-facts" class="facts"></dl>
+    <h3>What to expect in its images</h3>
+    <ul id="telescope-artifacts"></ul>
+    <div class="row dialog-buttons">
+      <a id="telescope-link" target="_blank" rel="noopener">Mission page at MAST ↗</a>
+      <span class="grow"></span>
+      <button type="button" id="telescope-close">Close</button>
+    </div>
+  </dialog>
+
   <main>
     <section class="panel" id="search-panel">
       <h2>Search</h2>
@@ -49,6 +61,7 @@
       <fieldset>
         <legend>Archives</legend>
         <div id="archive-boxes" class="row wrap"></div>
+        <div id="telescope-boxes" class="row wrap telescopes" aria-label="MAST telescopes" hidden></div>
       </fieldset>
 
       <fieldset>

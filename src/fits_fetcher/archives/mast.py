@@ -286,7 +286,8 @@ class MastArchive(Archive):
                 continue
             order = sorted(filts, key=lambda f: filters.parse(f, inst)[0] or 99)
             found.append(InsideGroup(name=name, archive=self.name, instrument=inst, filters=order,
-                                     ra=_float(rs[0]["s_ra"]), dec=_float(rs[0]["s_dec"])))
+                                     ra=_float(rs[0]["s_ra"]), dec=_float(rs[0]["s_dec"]),
+                                     collection=_text(rs[0]["obs_collection"])))
         return found
 
     def _wanted_family(self, row, mosaics: bool | None = None) -> bool:

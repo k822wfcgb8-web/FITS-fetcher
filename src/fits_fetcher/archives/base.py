@@ -100,6 +100,7 @@ class InsideGroup:
     filters: list[str]  # in wavelength order
     ra: float           # where the images point
     dec: float
+    collection: str = ""  # e.g. "HST", for the telescope name (REQ-73)
 
 
 @dataclass

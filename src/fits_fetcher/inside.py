@@ -96,7 +96,7 @@ def identify(groups: list[InsideGroup], target: Target) -> list[InsideObject]:
     for obj in objects.values():  # one line per archive and instrument
         merged: dict[tuple[str, str], InsideGroup] = {}
         for s in obj.sets:
-            m = merged.setdefault((s.archive, s.instrument), InsideGroup(obj.name, s.archive, s.instrument, [], s.ra, s.dec))
+            m = merged.setdefault((s.archive, s.instrument), InsideGroup(obj.name, s.archive, s.instrument, [], s.ra, s.dec, s.collection))
             m.filters = sorted(set(m.filters) | set(s.filters), key=lambda f: filters.parse(f, s.instrument)[0] or 99)
         obj.sets = sorted(merged.values(), key=lambda s: (-len(s.filters), s.instrument))
     return sorted(objects.values(), key=lambda o: (o.offset_arcmin, o.name))
