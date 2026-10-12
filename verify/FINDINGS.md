@@ -355,3 +355,37 @@ All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0).
 All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0); star-core repair found no holes (VISTA and HAWK-I saturated cores aren't blank); the credits list the HAWK-I (DOI 34) and VHS (DOI 57) collections. The VHS J box shows the whole galaxy cleanly. One HAWK-I Ks quarter has a **darker background** than the others (per-detector sky level in ESO's own stack), now listed in the fact sheet.
 
 **Hα label (fixed).** The OmegaCAM Hα filter NB_659 (653–665 nm) was labelled '[NII]': the line label took the nearest line to its centre (659 nm), and its band holds both Hα and [NII]. It's now named Hα by filter name (`filters.LINE_FILTERS`), so the line filter's 'Hα' picks it (NGC 5128: 'NB659 Hα'). A rule by passband was rejected because HST's [NII] filter F658N also reaches Hα.
+
+## 21 — CADC collections, mirrors and cutouts (REQ-21, REQ-35), 2026-10-12 (`21_cadc.py`)
+
+**Reachability.** From the home network (Fidium, AS13977) every NRC address (132.246.x) still times out. Over a phone hotspot (Verizon, AS6167) CADC answers in about 1 s. So the block is on the Fidium route, not at CADC. CADC's file service was **unstable during the test**: the same file was "found" and "not found" in turn by `cadc-west-01`, `ws-sf` and the `/data/pub` address over about 10 minutes, and `ws-uv.canfar.net` answered 503 throughout. Downloads are passed on to whichever storage site holds a copy (`ws-sf.canfar.net` or `ws-cadc.canfar.net`), and `ws-cadc` is unreachable from Fidium. **So from home, CADC searches and downloads fail even when CADC is up.**
+
+**TAP.** `https://ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/argus` (ObsCore plus the CAOM2 tables). CADC's ObsCore has **no `dataproduct_subtype`** column, and its `facility_name`/`instrument_name` are per observation. Filter names (`energy_bandpassName`), exposure time, pixel size and image size are in `caom2.Plane`. Archive-wide counts come instantly from `caom2.ObsCoreEnumField`. A position search took 7–36 s per object, because TESS adds 30,000–60,000 rows per object; a search limited to the stacked collections took 2–6 s.
+
+**Image collections, whole archive** (calib level: rows):
+
+| Group | Collections | Verdict |
+|---|---|---|
+| Mirrors of MAST | HST (L1–L3), HSTHLA (L3), JWST (L1–L3), TESS (22 M rows, L1/L2) | exclude (REQ-21); TESS is new to the list |
+| Mirror of IRSA | IRIS (IRAS reprocessed); EUCLID.Q1 / EUCLID.DR1 (L4) | IRSA holds Euclid and IRIS, so exclude |
+| Single exposures / raw | CFHT L1/L2 (MegaPrime, WIRCam, SITELLE, CFH12K), GEMINI (L1), SUBARU (L1), SUBARUCADC L2 (Suprime-Cam per chip), DAO, OMM, APASS, NEOSSAT, SDSS frames (L2), MACHO | excluded by REQ-12 (not combined) |
+| Radio / sub-mm | JCMT, SCUBA-LC, JCMTLS, VLASS, RACS, POSSUM, WALLABY, CGPS, VGPS, BLAST | not pictures in the app's sense; to decide |
+| Other | XMM Optical Monitor (L2, 85k) | per-exposure UV/optical frames; to decide |
+| **Combined optical / near-IR stacks** | **CFHTMEGAPIPE** (L3, 122k), **CFHTWIRWOLF** (WIRCam stacks, L3, 1.7k), **CFHTTERAPIX** (L3, 1k), **NGVS** (Virgo cluster, L3, 2.6k), **SUBARUCADC L3** (Suprime-Cam stacks, 26k), **LSST.DP1** (Rubin, L3, 2.6k) | the candidates for the CADC module |
+
+**Stacks around test objects** (L3 planes containing the centre):
+
+| Object | What's there |
+|---|---|
+| M51 | MegaPipe g, r (two generations: 2012–15 `G…` tiles 1.6°, 1.9 GB; 2020 `MegaPipe.276.274` tiles 31′ × 31′, 10000², 0.186″/px, 400 MB). No third filter. |
+| NGC 891 | MegaPipe g r z; WIRWOLF J Ks; Suprime-Cam stacks B V g r i |
+| M87 | MegaPipe u g r i z **plus Hα (MP9603) and [OIII] (MP9501)**, and a gri composite; NGVS u g r i z (8 tiles each); WIRWOLF H Ks; Suprime-Cam stacks B V Rc Ic g i |
+| M42, NGC 7293, M1, M31 | MegaPipe 4–38 planes; WIRWOLF at M42 and NGC 7293 |
+
+MegaPipe's Hα and [OIII] planes have a blank `energy_bandpassName`, so the filter has to be read from the product ID (`.HA.MP9603`, `.OIII.MP9501`). The 2020 MegaPipe tiles of one tile number have the same size in every filter, so they are probably on **one pixel grid** (Grid letters, REQ-60). *To check from the headers.*
+
+**Files and cutouts.** Each MegaPipe plane has a science FITS (400 MB to 1.9 GB), a weight map and a 0.6 MB whole-tile GIF preview. ObsCore's `access_url` is a DataLink record listing a SODA cutout service (`caom2ops/sync`, CIRCLE/POLYGON); during the test it redirected to `cadc-west-01`, which answered "not found". **What worked:** the file locator (`…/raven/files/cadc:CFHTSG/<file>`, or the 303 from `/data/pub/CFHTSG/<file>` with a one-byte Range request) followed by the storage site's `minoc/files/…?SUB=[0][x1:x2,y1:y2]`. A 55 × 55 px box at M51 came back as **20 KB in 2 s**, BITPIX −32, on the original grid (CRPIX moved by whole pixels: 5000 − 3352 = 1648), with FILTER, EXPTIME (3111 s) and PHOTZP (30.0) in the header. Public data needed no login. **Caution:** without a Range header, `/data/pub` sometimes sends the whole file instead of a redirect, so every request needs a byte limit.
+
+**Thumbnails.** CDS has sky maps only for the CFHT Legacy Survey (0.4% of the sky), so hips2fits can't be relied on. CADC's GIF previews show the whole 31′ tile, not the box. A thinned-out cutout (`SUB=[0][x1:x2:26,y1:y2:26]`, about 200 × 200 px, ~160 KB) could not be tested because the file service was flipping between sites.
+
+**Still open:** test the thinned-out thumbnail and the shared MegaPipe grid on a good connection; check CFHTTERAPIX, SUBARUCADC L3 and LSST.DP1 products the same way; confirm from Fidium that `ws-sf.canfar.net` (206.12.122.235) and `cadc-west-01.canfar.net` (206.12.48.216) answer. They are on the 206.12.x range, like `www.canfar.net`, which Fidium reaches. Only `ws-cadc` and the `cadc-ccda` names are on the blocked 132.246.x range, and the TAP search lives there, so a Fidium search still fails.
