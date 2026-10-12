@@ -44,6 +44,9 @@ QUERY_RADIUS_DEG = 0.02
 
 PROGRESS_INTERVAL_S = 0.3
 
+# Archives whose telescopes get tick boxes (REQ-72, REQ-87), and the setting listing each one's collections.
+TELESCOPE_SETTINGS = {"MAST": "mast_collections", "IRSA": "irsa_collections"}
+
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
@@ -90,10 +93,11 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
     def info():
         return {"version": __version__, "archives": list(ARCHIVES), "planned": PLANNED,
                 "emission_lines": list(filters.EMISSION_LINES), "settings": asdict(settings),
-                # REQ-72, REQ-74: every known telescope's fact sheet (results can name one no longer in the
-                # settings), and which MAST telescopes get a tick box.
+                # REQ-72, REQ-74, REQ-87: every known telescope's fact sheet (results can name one no longer in
+                # the settings), and which telescopes of each archive get a tick box.
                 "telescopes": telescopes.TELESCOPES,
-                "mast_telescopes": list(telescopes.for_collections(settings.mast_collections))}
+                "archive_telescopes": {a: list(telescopes.for_collections(getattr(settings, field)))
+                                       for a, field in TELESCOPE_SETTINGS.items() if a in ARCHIVES}}
 
     @app.get("/api/resolve")
     def resolve_name(q: str):
@@ -114,12 +118,13 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
         run_settings = replace(settings, hst_show_mosaics=hst_mosaics)
         chosen = [a for a in archives.split(",") if a in ARCHIVES]
         skipped = []
-        if telescopes is not None:  # REQ-72: only the ticked MAST telescopes; none ticked skips MAST
+        if telescopes is not None:  # REQ-72, REQ-87: only the ticked telescopes; none ticked skips the archive
             ticked = set(telescopes.split(","))
-            run_settings = replace(run_settings, mast_collections=[c for c in settings.mast_collections if c in ticked])
-            if "MAST" in chosen and not run_settings.mast_collections:
-                chosen.remove("MAST")
-                skipped.append("MAST")
+            for name, field in TELESCOPE_SETTINGS.items():
+                run_settings = replace(run_settings, **{field: [c for c in getattr(settings, field) if c in ticked]})
+                if name in chosen and not getattr(run_settings, field):
+                    chosen.remove(name)
+                    skipped.append(name)
         line_set = {line for line in lines.split(",") if line}
 
         async def stream():

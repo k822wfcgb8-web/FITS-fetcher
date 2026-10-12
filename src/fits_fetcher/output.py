@@ -18,6 +18,9 @@ from fits_fetcher.archives.base import Product, Target
 
 MAX_NAME = 120  # keep folder names well under the 255-character limit of common file systems
 
+_IRSA = ("This research has made use of the NASA/IPAC Infrared Science Archive, which is funded by the National "
+         "Aeronautics and Space Administration and operated by the California Institute of Technology.")
+
 # Acknowledgements requested by each mission, checked against the MAST and PS1 pages on 2026-10-10:
 # archive.stsci.edu/publishing/mission-acknowledgements and the PS1 data archive home page.
 CREDITS = {
@@ -45,6 +48,23 @@ CREDITS = {
             "Grant No. AST-1238877, the University of Maryland, Eotvos Lorand University (ELTE), the Los Alamos "
             "National Laboratory, and the Gordon and Betty Moore Foundation. Please also cite Chambers et al. "
             "2016, \"The Pan-STARRS1 Surveys\" (arXiv:1612.05560)."),
+    # IRSA: its own statement (irsa.ipac.caltech.edu/ack.html), then each mission's, checked 2026-10-12 on the IRSA
+    # 2MASS page and the AllWISE release page. IRSA's Spitzer pages give none, so Spitzer's is the standard text.
+    "spitzer_seip": ("Spitzer Space Telescope",
+                     "This work is based in part on observations made with the Spitzer Space Telescope, which was "
+                     "operated by the Jet Propulsion Laboratory, California Institute of Technology under a contract "
+                     "with NASA. " + _IRSA),
+    "wise_allwise": ("Wide-field Infrared Survey Explorer (AllWISE)",
+                     "This publication makes use of data products from AllWISE. AllWISE makes use of data from WISE, "
+                     "which is a joint project of the University of California, Los Angeles, and the Jet Propulsion "
+                     "Laboratory/California Institute of Technology, and NEOWISE, which is a project of the Jet "
+                     "Propulsion Laboratory/California Institute of Technology. WISE and NEOWISE are funded by the "
+                     "National Aeronautics and Space Administration. " + _IRSA),
+    "twomass_allsky": ("Two Micron All Sky Survey (2MASS)",
+                       "This publication makes use of data products from the Two Micron All Sky Survey, which is a "
+                       "joint project of the University of Massachusetts and the Infrared Processing and Analysis "
+                       "Center/California Institute of Technology, funded by the National Aeronautics and Space "
+                       "Administration and the National Science Foundation. " + _IRSA),
 }
 
 

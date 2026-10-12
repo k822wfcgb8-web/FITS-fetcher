@@ -1,7 +1,7 @@
 """Telescope fact sheets (REQ-74), keyed by archive collection, for the search page's telescope pop-ups.
 
 `name` is what the page shows next to the instrument (REQ-73) and on the MAST tick boxes (REQ-72). Pixel scales
-are those of the combined products FITS-fetcher downloads (archives/mast.py PIXEL_SCALE).
+are those of the combined products FITS-fetcher downloads (archives/mast.py PIXEL_SCALE, archives/irsa.py).
 """
 from __future__ import annotations
 
@@ -67,6 +67,70 @@ TELESCOPES: dict[str, dict] = {
             "Satellite trails, and ghost reflections near very bright stars.",
         ],
         "link": "https://archive.stsci.edu/missions-and-data/pan-starrs",
+    },
+    # IRSA (REQ-87). Collection names are IRSA's SIA collections (REQ-56).
+    "spitzer_seip": {
+        "name": "Spitzer",
+        "full_name": "Spitzer Space Telescope",
+        "facts": [
+            ("Mirror", "0.85 m, cooled with liquid helium until 2009"),
+            ("Where", "An Earth-trailing orbit around the Sun"),
+            ("Active", "2003–2020; after the coolant ran out in 2009 only IRAC's 3.6 and 4.5 µm bands worked"),
+            ("Cameras used", "IRAC (3.6, 4.5, 5.8, 8.0 µm) and MIPS 24 µm, as the Enhanced Imaging Products "
+                             "mosaics: IRAC 0.6″, MIPS 2.45″ pixels"),
+            ("Wavelengths", "3.6–24 µm (near- to mid-infrared)"),
+        ],
+        "artifacts": [
+            "Bright stars leave trails along rows and columns in IRAC (\"muxbleed\" and column pulldown).",
+            "Coverage is uneven: mosaic edges and gaps between pointings are noisier or blank.",
+            "IRAC 5.8 and 8.0 µm are less sensitive and show more stray light; many objects observed after 2009 "
+            "have only 3.6 and 4.5 µm.",
+            "MIPS 24 µm: much softer images (about 6″ resolution), rings around bright sources and dark latent "
+            "streaks.",
+        ],
+        "link": "https://irsa.ipac.caltech.edu/Missions/spitzer.html",
+        "link_label": "Mission page at IRSA",
+    },
+    "wise_allwise": {
+        "name": "WISE",
+        "full_name": "Wide-field Infrared Survey Explorer (AllWISE)",
+        "facts": [
+            ("Mirror", "0.4 m"),
+            ("Where", "Polar orbit around the Earth, about 525 km up"),
+            ("Active", "AllWISE combines the 2010–2011 survey; the whole sky in four bands"),
+            ("Camera", "Four detectors seeing the same field at once; atlas tiles 1.56° across"),
+            ("Pixel scale", "1.375″ in the atlas images; resolution 6″ (W1–W3) and 12″ (W4)"),
+            ("Wavelengths", "W1 3.4, W2 4.6, W3 12 and W4 22 µm (near- to mid-infrared)"),
+        ],
+        "artifacts": [
+            "Atlas images are smoothed by the telescope's own blur, so stars look soft; W4 is about twice as "
+            "soft as the other bands.",
+            "Halos, ghost images and diffraction spikes around bright stars.",
+            "W3 and W4 show bright, patchy background from interstellar dust and the zodiacal light.",
+            "Pixel values are in instrument units (DN); the header's MAGZP gives the magnitude scale.",
+        ],
+        "link": "https://irsa.ipac.caltech.edu/Missions/wise.html",
+        "link_label": "Mission page at IRSA",
+    },
+    "twomass_allsky": {
+        "name": "2MASS",
+        "full_name": "Two Micron All Sky Survey",
+        "facts": [
+            ("Mirror", "Two 1.3 m telescopes"),
+            ("Where", "Mount Hopkins, Arizona, and Cerro Tololo, Chile (ground-based)"),
+            ("Active", "1997–2001; the whole sky"),
+            ("Camera", "Three detectors seeing J, H and Ks at once; atlas images 8.5′ × 17′"),
+            ("Pixel scale", "1″ in the atlas images (resampled from 2″ detector pixels); stars about 2.5–3″ across"),
+            ("Wavelengths", "J 1.25, H 1.65 and Ks 2.17 µm (near-infrared)"),
+        ],
+        "artifacts": [
+            "Each image covers only 8.5′ × 17′, so large objects are cut off at its edge.",
+            "Diffraction spikes, glints and persistence trails near bright stars.",
+            "Background changes from airglow, especially in H, and seams between survey scans.",
+            "Pixel values are in instrument units (DN); the header's MAGZP gives the magnitude scale.",
+        ],
+        "link": "https://irsa.ipac.caltech.edu/Missions/2mass.html",
+        "link_label": "Mission page at IRSA",
     },
 }
 

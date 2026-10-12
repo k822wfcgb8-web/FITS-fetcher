@@ -1,7 +1,7 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.18 (approved)
-**Date:** 2026-10-11
+**Version:** 1.19 (approved)
+**Date:** 2026-10-12
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
 > **How to read this draft**
@@ -155,6 +155,11 @@ A cross-platform Python application that lets an amateur astrophotographer searc
   - **Single-visit HAP images by default.**
   - A search-panel switch, **"Also show HST mosaics"** (off by default), that adds the multi-visit mosaics. A mosaic is always delivered **cut around the object**: the same centred pixel box is cut from every filter, so the filters stay pixel-aligned without resampling (verification showed all mosaics of a skycell share one grid). Only the rows of the box are downloaded (REQ-57). The box is 2× the object's size (REQ-25), or a default size when the size is unknown. Objects larger than a skycell (about 14′) or lying across a skycell boundary are cut off at the mosaic edge; the app warns when this happens.
   - **Classic pipeline products are never shown.**
+- **REQ-85:** *(Resolved Q-77)* IRSA images (Spitzer mosaics, WISE atlas tiles, 2MASS atlas images) are delivered as a **box centred on the object, 1.5× its size** (the default cutout box when the size is unknown), the same rule as Pan-STARRS (REQ-68). The box is cut **on the original pixel grid, with no resampling**, so the bands of one tile or mosaic get the same box and stack pixel-for-pixel (REQ-60): WISE and 2MASS boxes by **IRSA's cutout service**, Spitzer boxes by fetching only the box's rows (REQ-57), because Spitzer mosaics are served outside that service (verification step 19). The 'Cut around the object' option doesn't change IRSA boxes. Thumbnails come from CDS hips2fits, drawn from each survey's own sky map (REQ-27).
+- **REQ-86:** *(Resolved Q-78)* When the box runs past the edge of the image holding the object's centre (2MASS images are 8.5′ × 17′; WISE tiles 1.56°), the app delivers **the part of the box that image covers**. Coverage (REQ-69) shows how much of the object is in it. Joining neighbouring images waits for reprojection (REQ-24), because they aren't on one pixel grid.
+- **REQ-87:** *(Resolved Q-79)* IRSA gets **telescope tick boxes** like MAST (REQ-72): one per telescope in the `irsa_collections` setting (Spitzer, WISE, 2MASS), all ticked by default; IRSA is skipped if none is ticked. Each telescope is named on set headings and rows (REQ-73) and links to a fact sheet with artifacts to expect (REQ-74).
+- **REQ-88:** *(Resolved Q-80)* IRSA images take **no part in off-centre sets (REQ-71) or the 'Also inside' list (REQ-70)**: WISE and 2MASS are all-sky survey tiles, like Pan-STARRS. Spitzer may be added later if results look thin. IRSA is also not searched for planets and moons (REQ-79).
+- **REQ-89:** *(Resolved Q-81)* Spitzer IRAC **'short frames' mosaics** (from the short exposures of high-dynamic-range observations; e.g. 3.9 s against 104 s) are **listed under their filter** with the full-depth mosaics (REQ-53), with a **'short frames' chip** explaining that they're shallower but unsaturated. They share the full-depth mosaics' pixel grid, so they get the same Grid letter (REQ-60).
 - **REQ-35:** The CADC module keeps an explicit **exclusion list** of mirrored collections (initially HST and JWST). The list lives in configuration, not code, so it can be updated if CADC adds new mirrors. During implementation, the CADC collection list must be checked against MAST, ESO and IRSA holdings to finalise it *(verify)*.
 
 ### 7.3 Result metadata to display (suggested)
@@ -342,6 +347,11 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-74~~ | The 'Select deepest in every filter' button: **resolved → kept, but only on sets with several images in a filter (REQ-83)** | — |
 | ~~Q-75~~ | Where the module-gap chip goes: **resolved → image row and set heading (REQ-84)** | — |
 | ~~Q-76~~ | Also mark images where the gap was filled: **resolved → no, gap only (REQ-84)** | — |
+| ~~Q-77~~ | IRSA image size (WISE tiles 1.56°, about 67 MB per band): **resolved → box 1.5× the object, cut on the original grid (REQ-85)** | — |
+| ~~Q-78~~ | Objects bigger than one IRSA image: **resolved → deliver the part the centre image covers, with coverage shown (REQ-86)** | — |
+| ~~Q-79~~ | IRSA telescopes: **resolved → tick boxes and fact sheets like MAST (REQ-87)** | — |
+| ~~Q-80~~ | IRSA in off-centre sets and 'Also inside': **resolved → not for IRSA (REQ-88)** | — |
+| ~~Q-81~~ | Spitzer 'short frames' IRAC mosaics: **resolved → listed under the same filter with a chip (REQ-89)** | — |
 
 ---
 
@@ -378,3 +388,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.16 | 2026-10-11 | Added and resolved Q-69–Q-71: colour hint on every set heading, with colour names per filter and suggested RGB channels (REQ-82). |
 | 1.17 | 2026-10-11 | Added and resolved Q-72–Q-74: an "All N images" tick box on every set heading (REQ-83). |
 | 1.18 | 2026-10-11 | Added and resolved Q-75, Q-76: "2 modules, gap not covered" chip on NIRCam images whose footprint is in separate pieces (REQ-84). |
+| 1.19 | 2026-10-12 | Added and resolved Q-77–Q-80 for the IRSA module: box around the object on the original grid (REQ-85), clipped at the image edge (REQ-86), telescope tick boxes and fact sheets (REQ-87), no off-centre or 'Also inside' lists (REQ-88). Added and resolved Q-81: Spitzer short-frame mosaics listed with a chip (REQ-89). |

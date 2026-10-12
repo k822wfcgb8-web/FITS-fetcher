@@ -69,6 +69,8 @@ class Product:
     grid_regions: list[str] = field(default_factory=list)
     visit: str = ""                     # planets and moons (REQ-80): only images of one visit form a set
     module_gap: bool = False            # REQ-84: NIRCam's two modules with the gap between them not covered
+    boxed: bool = False                 # REQ-85: the archive module delivers a box around the object (IRSA)
+    chip: str = ""                      # a short label on the row, e.g. "short frames" (REQ-89)
 
     @property
     def key(self) -> str:
@@ -96,6 +98,7 @@ class Fetched:
     # pixel (0, 0) in the canvas. Each piece is linearised on its own before pasting.
     stitch: list[tuple[Path, int, int, int]] = field(default_factory=list)
     url: str = ""                                     # the address actually read, if not the product's own
+    box_arcmin: float | None = None                   # size of a box the archive module cut (REQ-85), for HISTORY
 
 
 @dataclass

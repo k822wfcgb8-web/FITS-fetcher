@@ -63,7 +63,7 @@ class Options:
     def for_product(self, product: Product) -> Options:
         if product.parts:  # a Pan-STARRS box (REQ-68) is built to its size and its footprint is one skycell's
             return replace(self, cutout=False, trim=False)
-        if product.cut:  # already cut to the off-centre shared area (REQ-71)
+        if product.cut or product.boxed:  # already cut to the off-centre shared area (REQ-71) or a box (REQ-85)
             return replace(self, cutout=False)
         return replace(self, cutout=True) if product.is_mosaic else self  # mosaics are always cut (REQ-58)
 
@@ -298,7 +298,7 @@ def process(f: Fetched, product: Product, target: Target, options: Options, grid
                 notes.append("The shared area ran past this image's edge, so its box is smaller than the other filters'.")
         else:
             history.append(f"Cut around {target.matched_id or 'the object'}: {x1 - x0} x {y1 - y0} px "
-                           f"({options.box_arcmin:.1f} arcmin box).")
+                           f"({f.box_arcmin or options.box_arcmin:.1f} arcmin box).")
             if clipped:
                 notes.append("The box around the object ran past the image edge, so part of the object is missing.")
 

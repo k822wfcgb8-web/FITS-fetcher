@@ -77,18 +77,24 @@ async function init() {
   }
 }
 
-// ---------- telescopes (REQ-72–74) ----------
-// A tick box per MAST telescope, shown while MAST is ticked. The name beside each box opens its fact sheet.
+// ---------- telescopes (REQ-72–74, REQ-87) ----------
+// A row of tick boxes per archive with telescopes (MAST, IRSA), shown while that archive is ticked. The name beside
+// each box opens its fact sheet.
 function buildTelescopeBoxes() {
-  const box = $("telescope-boxes"), mast = document.querySelector('#archive-boxes input[value="MAST"]');
-  if (!mast || !state.info.mast_telescopes.length) return;
-  box.append(el("span", { class: "lead" }, "MAST telescopes:"),
-    ...state.info.mast_telescopes.map((c) => el("span", { class: "check" },
-      el("input", { type: "checkbox", value: c, checked: true, "aria-label": `Search ${telescopeName(c)}` }),
-      telLink(c))));
-  const show = () => { box.hidden = !mast.checked; };
-  mast.addEventListener("change", show);
-  show();
+  for (const [archive, collections] of Object.entries(state.info.archive_telescopes || {})) {
+    const ticked = document.querySelector(`#archive-boxes input[value="${archive}"]`);
+    if (!ticked || !collections.length) continue;
+    const row = el("div", { class: "row wrap telescopes", "aria-label": `${archive} telescopes` },
+      el("span", { class: "lead" }, `${archive} telescopes:`),
+      ...collections.map((c) => el("span", { class: "check" },
+        el("input", { type: "checkbox", value: c, checked: true, "aria-label": `Search ${telescopeName(c)}` }),
+        telLink(c))));
+    const show = () => { row.hidden = !ticked.checked; };
+    ticked.addEventListener("change", show);
+    show();
+    $("telescope-boxes").append(row);
+  }
+  $("telescope-boxes").hidden = !$("telescope-boxes").children.length;
 }
 
 const telescopeName = (collection) => state.info.telescopes[collection]?.name || collection;
@@ -110,6 +116,7 @@ function showTelescope(collection) {
   $("telescope-facts").replaceChildren(...t.facts.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)]));
   $("telescope-artifacts").replaceChildren(...t.artifacts.map((a) => el("li", {}, a)));
   $("telescope-link").href = t.link;
+  $("telescope-link").textContent = `${t.link_label || "Mission page at MAST"} ↗`;
   $("telescope-dialog").showModal();
 }
 $("telescope-close").addEventListener("click", () => $("telescope-dialog").close());
@@ -187,7 +194,7 @@ $("search").addEventListener("click", () => {
     band_type: $("band-type").value, lines: checked("#line-boxes input").join(","),
     hst_mosaics: $("hst-mosaics").checked,
   });
-  if (!$("telescope-boxes").hidden) params.set("telescopes", checked("#telescope-boxes input").join(","));
+  if (!$("telescope-boxes").hidden) params.set("telescopes", checked("#telescope-boxes input").join(","));  // all archives
   if (t.size_arcmin) params.set("size_arcmin", t.size_arcmin);
   if (t.body) params.set("body", t.body);
 
@@ -416,6 +423,12 @@ function renderSet(set) {
       body)));
 }
 
+// REQ-89: what a row's label chip means.
+const chipTitle = (chip) => chip === "short frames"
+  ? "Built only from the short exposures of a high-dynamic-range observation: much shallower, but bright stars and " +
+    "nuclei aren't saturated. Same pixel grid as the full-depth image, so it can be blended in to repair saturated cores."
+  : "";
+
 function renderProduct(p, grid) {
   const mark = grid ? { class: "on-grid", style: gridStyle(grid.i) } : {};
   const box = el("input", { type: "checkbox", "data-key": p.key, checked: state.selected.has(p.key),
@@ -438,6 +451,7 @@ function renderProduct(p, grid) {
       grid ? el("div", {}, el("span", { class: "chip grid", title: `Same pixel grid as the other Grid ${grid.label} images` },
         `Grid ${grid.label}`)) : null),
     el("td", {}, ...source(p.archive, p.collection), ` · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null,
+      p.chip ? el("div", {}, el("span", { class: "chip", title: chipTitle(p.chip) }, p.chip)) : null,
       p.module_gap ? el("div", {}, gapChip()) : null),
     el("td", {}, fmt.exp(p.exptime_s)),
     el("td", { title: coverageTitle() }, fmt.cover(p.coverage)),

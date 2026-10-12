@@ -78,7 +78,7 @@ def test_search_streams_results_and_reports_failures(client):
 
 def test_info_has_telescope_fact_sheets(client):
     info = client.get("/api/info").json()
-    assert info["mast_telescopes"] == ["HST", "JWST", "PS1"]
+    assert info["archive_telescopes"] == {}  # neither MAST nor IRSA is among this test's archives
     ps1 = info["telescopes"]["PS1"]
     assert ps1["name"] == "Pan-STARRS1" and ps1["facts"] and ps1["artifacts"] and ps1["link"].startswith("https://")
 
@@ -103,6 +103,31 @@ def test_search_only_ticked_mast_telescopes(monkeypatch, product):
     ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST", "telescopes": ""}).text)
     assert ("status", {"archive": "MAST", "state": "skipped", "message": "MAST: no telescope ticked."}) in ev
     assert len(seen) == 2 and ev[-1][0] == "end"
+
+
+def test_irsa_telescopes_get_tick_boxes_too(monkeypatch):
+    """REQ-87: each archive with telescopes gets its own tick boxes; one `telescopes` list covers all of them."""
+    seen = {}
+
+    def fake(name, field):
+        class A(Archive):
+            def search(self, target, radius_deg):
+                seen[name] = getattr(self.settings, field)
+                return []
+        A.name = name
+        return A
+
+    monkeypatch.setattr(webapp, "ARCHIVES", {"MAST": fake("MAST", "mast_collections"),
+                                             "IRSA": fake("IRSA", "irsa_collections")})
+    c = TestClient(webapp.create_app(Settings()))
+    info = c.get("/api/info").json()
+    assert info["archive_telescopes"] == {"MAST": ["HST", "JWST", "PS1"],
+                                          "IRSA": ["spitzer_seip", "wise_allwise", "twomass_allsky"]}
+    assert info["telescopes"]["wise_allwise"]["name"] == "WISE" and "IRSA" in info["telescopes"]["wise_allwise"]["link_label"]
+    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST,IRSA", "telescopes": "JWST,wise_allwise"}).text)
+    assert seen == {"MAST": ["JWST"], "IRSA": ["wise_allwise"]}
+    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST,IRSA", "telescopes": "HST"}).text)
+    assert ("status", {"archive": "IRSA", "state": "skipped", "message": "IRSA: no telescope ticked."}) in ev
 
 
 def test_quit(client):

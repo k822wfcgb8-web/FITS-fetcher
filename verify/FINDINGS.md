@@ -284,3 +284,26 @@ The Moon, Venus and Mercury return no moving-target images.
 - **JWST F323N:** the dark planet with bright rings from the article.
 - **JWST F150W2 and F322W2:** the disc is **saturated** in the archive's own files, so it's blank, with strong diffraction spikes and scattered light. F150W2 also shows the short-wave chip gaps.
 - **Star-core repair:** it touched only small holes (160–482 regions, 201–3185 px) and left the planet's disc alone (far above the limits).
+
+## 19 — IRSA module (REQ-85 to REQ-89), 2026-10-12 (`19_irsa_search.py`, `19b_irsa_download.py`)
+
+**IRSA was half down all morning.** From about 08:10 EDT the SIA search, TAP and IBE search endpoints answered `503 Service Unavailable` ("maintenance downtime or capacity problems"); one SIA request at 08:17 got through. The front page, IBE file downloads, IBE cutouts and the old 2MASS SIA (`cgi-bin/2MASS/IM/nph-im_sia`) kept working. No outage was announced. The app now says "IRSA couldn't be searched: its image search is temporarily unavailable (HTTP 503). Try again later." and shows MAST's results as usual (M51: 163 images).
+
+**WISE (AllWISE atlas), M51, tile `2029p469_ac51`.** Files are 4095 × 4095 px float, 67 MB per band, `RA---SIN`, 1.375″, DN with `MAGZP`, served with `Accept-Ranges`. IBE's cutout option (`?center=ra,dec&size=16.8arcmin`) returns a gzipped single-HDU FITS (1.4–1.9 MB, 3–13 s) of 734 px for 16.8′. **W1 and W4 cutouts have identical NAXIS, CRVAL and CRPIX**, and CRPIX differs from the tile's by whole pixels (2465, 2331), so the bands stack pixel-for-pixel with no resampling.
+
+**2MASS (All-Sky atlas), M51.** IBE files are `…/allsky/<yymmdd><n|s>/s<scan>/image/<j|h|k>i<scan><tile>.fits.gz`, 512 × 1024 px at 1″ (8.5′ × 17′), about 1.5 MB gzipped. **J, H and Ks of one image share one grid exactly** (same NAXIS, CRVAL, CRPIX, CROTA2). M51's centre lies in image `980527n` scan 024 tile 0232, at pixel (382, 807), 10 px off the neighbouring scan-023 images. IBE cutouts are **exact copies of the original pixels** (checked pixel by pixel, NaNs included) with CRPIX shifted by whole pixels; a box bigger than the image comes back clipped (16.8′ → 512 × 721 px), the REQ-86 behaviour.
+
+**Spitzer (SEIP).** Mosaics live under `/data/SPITZER/Enhanced/SEIP/images/…`, not IBE: the cutout option is **ignored** there (a 1′ request returned the whole 3.2 MB file), but range requests work. So Spitzer boxes are fetched as rows (REQ-57), like HST mosaics. In regions 50057690-0 and 50058000-0 **IRAC channels 1–4 share one grid exactly** (0.6″, same NAXIS, CRVAL, CRPIX); MIPS 24 µm has its own 2.45″ grid. HDR observations add `-short` IRAC mosaics on the same grid (3.9 s against 104 s) → REQ-89.
+
+**Thumbnails.** IRSA has no preview images. CDS hips2fits draws the box from `CDS/P/allWISE/W1–W4`, `CDS/P/2MASS/J,H,K` and `CDS/P/SPITZER/IRAC1–4, MIPS1` in about 0.5 s (5–10 KB JPEG). `CDS/P/SPITZER/MIPS24` doesn't exist (HTTP 400).
+
+**Download chain on real files** (`19b_irsa_download.py`, M51, 1.5 × 11.2′ = 16.8′ box):
+
+| Images | Output | Fetched | Notes |
+|---|---|---|---|
+| WISE W1–W4 | 735 × 734 px each, identical CRPIX, M51 at (367, 366) | 1.5–1.9 MB per band (not 67 MB) | 3–10 s each |
+| 2MASS J, H, Ks | 512 × 721 px each, identical CRPIX | about 1.1 MB per band | clipped at the image edge, row warns |
+
+All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0).
+
+**Not yet checked live:** the SIA search itself (column values, `access_url` form per collection), and a Spitzer download, because the search was down.
