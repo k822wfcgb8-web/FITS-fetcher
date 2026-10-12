@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.19 (approved)
+**Version:** 1.20 (approved)
 **Date:** 2026-10-12
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -142,7 +142,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | Archive | Likely Python access route | Notes |
 |---|---|---|
 | MAST | `astroquery.mast` (Observations API) | HST, JWST, Pan-STARRS, GALEX, others. Pan-STARRS images may be served through a separate cutout service. |
-| ESO | `astroquery.eso` | Phase 3 reduced products. Confirm whether anonymous download is permitted for public data. |
+| ESO | ObsCore TAP via `pyvo` (`archive.eso.org/tap_obs`); SODA cutouts | Phase 3 reduced products. **Anonymous download of public data confirmed** (verification step 20). See REQ-90–REQ-93. |
 | IRSA | `astroquery.ipac.irsa` / IVOA SIA via `pyvo` | Spitzer, WISE, 2MASS, Herschel, Euclid, ZTF. |
 | CADC | `astroquery.cadc` or `pyvo` TAP queries | **Non-mirrored collections only** (REQ-21): CFHT (incl. MegaPipe), Gemini, others to be confirmed. HST and JWST collections excluded. |
 
@@ -159,6 +159,10 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 - **REQ-86:** *(Resolved Q-78)* When the box runs past the edge of the image holding the object's centre (2MASS images are 8.5′ × 17′; WISE tiles 1.56°), the app delivers **the part of the box that image covers**. Coverage (REQ-69) shows how much of the object is in it. Joining neighbouring images waits for reprojection (REQ-24), because they aren't on one pixel grid.
 - **REQ-87:** *(Resolved Q-79)* IRSA gets **telescope tick boxes** like MAST (REQ-72): one per telescope in the `irsa_collections` setting (Spitzer, WISE, 2MASS), all ticked by default; IRSA is skipped if none is ticked. Each telescope is named on set headings and rows (REQ-73) and links to a fact sheet with artifacts to expect (REQ-74).
 - **REQ-88:** *(Resolved Q-80)* IRSA images take **no part in off-centre sets (REQ-71) or the 'Also inside' list (REQ-70)**: WISE and 2MASS are all-sky survey tiles, like Pan-STARRS. Spitzer may be added later if results look thin. IRSA is also not searched for planets and moons (REQ-79).
+- **REQ-90:** *(Resolved Q-82, Q-85, Q-87)* ESO is searched through its **ObsCore table**, for **combined products only** (`dataproduct_subtype` blank; pawprints excluded by REQ-12) that are already public, and only if the footprint contains the object's centre (REQ-14). `calib_level` isn't used (every ESO image says 2). ESO gets **telescope tick boxes** like MAST and IRSA (REQ-72, REQ-87), all ticked by default, from the `eso_telescopes` setting: **VISTA** (VIRCAM tiles), **VST** (OmegaCAM combined images), **VLT** (HAWK-I stacks) and **NTT** (SOFI stacks), each with a fact sheet (REQ-74). ALMA, APEX, NGTS, SPHERE and other instruments are never searched. Rows name the telescope (e.g. `ESO · VLT · HAWK-I`); the details name the ESO data collection (e.g. VHS, KiDS), which is also written to the header (`FFSURVEY`) and used for the credits: the ESO programme statement plus the collection's DOI. ESO takes no part in off-centre sets (REQ-71) or the 'Also inside' list (REQ-70), and isn't searched for planets and moons (REQ-79). No two ESO filters share a pixel grid (VHS J, Y and Ks of one night differ slightly), so ESO images get no Grid letter (REQ-60).
+- **REQ-91:** *(Resolved Q-86, after M8 returned 80 VVV Ks tiles)* **Repeat epochs are dropped**: repeats only matter for variability and photometry. Per data collection, instrument and filter, only the **deepest image of each pointing** is offered (ESO's 5σ limiting magnitude, else the exposure time). Images whose centres lie further apart than a tenth of the field (at least 1′) are different pointings and are all listed (REQ-53), e.g. HAWK-I's four pointings around M83. A different collection (VVV and VVVX) keeps its own deepest image.
+- **REQ-92:** *(Resolved Q-83)* ESO images are delivered as a **box centred on the object, 1.5× its size**, the Pan-STARRS and IRSA rule (REQ-68, REQ-85), cut by **ESO's SODA cutout service on the file's own pixel grid with no resampling** (CRPIX moves by whole pixels; verification step 20). Whole files are 150–230 MB (VISTA tiles) to about 1.4 GB (KiDS). A box past the image edge is clipped, with coverage showing what's missing (REQ-86). The 'Cut around the object' option doesn't change ESO boxes.
+- **REQ-93:** *(Resolved Q-84)* ESO's own previews are PDFs only, so thumbnails come from **CDS hips2fits, drawn from the survey's own sky map** where one exists (VHS, VIKING, VVV in Z/Y/J, UltraVISTA, KiDS colour maps). Otherwise the row shows the placeholder, and a thumbnail is made from the image once it's downloaded (REQ-27).
 - **REQ-89:** *(Resolved Q-81)* Spitzer IRAC **'short frames' mosaics** (from the short exposures of high-dynamic-range observations; e.g. 3.9 s against 104 s) are **listed under their filter** with the full-depth mosaics (REQ-53), with a **'short frames' chip** explaining that they're shallower but unsaturated. They share the full-depth mosaics' pixel grid, so they get the same Grid letter (REQ-60).
 - **REQ-35:** The CADC module keeps an explicit **exclusion list** of mirrored collections (initially HST and JWST). The list lives in configuration, not code, so it can be updated if CADC adds new mirrors. During implementation, the CADC collection list must be checked against MAST, ESO and IRSA holdings to finalise it *(verify)*.
 
@@ -189,7 +193,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | REQ-33 | *(Resolved Q-21)* Output format is **FITS only**. |
 | REQ-22 | *(Resolved Q-19)* **NaN (blank) pixels are always replaced with 0** in the saved file. When reprojection or cutouts are used (REQ-24, REQ-25), the replacement happens **last**, so zeros are never interpolated into real data. Note: in background-subtracted images, 0 can also be a genuine sky value, so replaced pixels can't be told apart afterwards. |
 | REQ-23 | *(Resolved Q-17)* The **original archive file is deleted** once the science image has been extracted and saved successfully. If extraction fails, the original is kept and the error is logged. Because the manifest (S-30) was denied, the **source URL and download date are written into the saved FITS header** (as `HISTORY` or custom keywords), so the original can be downloaded again. Where only the science extension is fetched (REQ-57), no original file is stored, so there is nothing to delete. |
-| REQ-12 | *(Resolved Q-18)* For cameras with multiple detector chips, **only products the archive has already combined into a single image** (tiles, stacks, drizzled mosaics) are offered. Unmerged multi-chip files (e.g., VISTA "pawprints", single OmegaCAM exposures) are excluded in version 1. |
+| REQ-12 | *(Resolved Q-18)* For cameras with multiple detector chips, **only products the archive has already combined into a single image** (tiles, stacks, drizzled mosaics) are offered. Unmerged multi-chip files (e.g., VISTA "pawprints", single OmegaCAM exposures) are excluded in version 1. *(Confirmed for ESO with Q-82: most ESO optical data (VST-ATLAS, VPHAS+, VIMOS) are pawprints only, so ESO is mainly near-IR; pawprints can return once reprojection (REQ-24) can join their chips.)* |
 | REQ-57 | *(Resolved Q-36)* Where the archive supports **partial (HTTP range) reads**, the app fetches **only the science extension** and the header data it needs, not the whole file. Verified for MAST (HST `_drc`/`_drz`, JWST `_i2d`), where the science array is about one third (HST) to one seventh (JWST) of the file. Archives that don't support partial reads, and single-image files, are downloaded whole. Estimated sizes (S-26) reflect what will actually be fetched. |
 
 
@@ -352,6 +356,12 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-79~~ | IRSA telescopes: **resolved → tick boxes and fact sheets like MAST (REQ-87)** | — |
 | ~~Q-80~~ | IRSA in off-centre sets and 'Also inside': **resolved → not for IRSA (REQ-88)** | — |
 | ~~Q-81~~ | Spitzer 'short frames' IRAC mosaics: **resolved → listed under the same filter with a chip (REQ-89)** | — |
+| ~~Q-82~~ | ESO pawprints (most of ESO's optical data, incl. VST-ATLAS and VPHAS+ Hα): **resolved → keep excluded under REQ-12 until reprojection (REQ-12, REQ-90)** | — |
+| ~~Q-83~~ | ESO delivery (VISTA tiles 150–230 MB, KiDS about 1.4 GB): **resolved → box 1.5× the object from ESO's cutout service (REQ-92)** | — |
+| ~~Q-84~~ | ESO thumbnails (previews are PDF only): **resolved → survey sky map where CDS has one, else placeholder (REQ-93)** | — |
+| ~~Q-85~~ | ESO telescopes: **resolved → tick boxes for VISTA, VST, VLT (HAWK-I) and NTT (SOFI) (REQ-90)** | — |
+| ~~Q-86~~ | Repeat epochs (M8: 80 VVV Ks tiles): **resolved → not wanted (no photometry); deepest image per pointing and collection (REQ-91)** | — |
+| ~~Q-87~~ | ESO in off-centre sets and 'Also inside': **resolved → neither (REQ-90)** | — |
 
 ---
 
@@ -389,3 +399,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.17 | 2026-10-11 | Added and resolved Q-72–Q-74: an "All N images" tick box on every set heading (REQ-83). |
 | 1.18 | 2026-10-11 | Added and resolved Q-75, Q-76: "2 modules, gap not covered" chip on NIRCam images whose footprint is in separate pieces (REQ-84). |
 | 1.19 | 2026-10-12 | Added and resolved Q-77–Q-80 for the IRSA module: box around the object on the original grid (REQ-85), clipped at the image edge (REQ-86), telescope tick boxes and fact sheets (REQ-87), no off-centre or 'Also inside' lists (REQ-88). Added and resolved Q-81: Spitzer short-frame mosaics listed with a chip (REQ-89). |
+| 1.20 | 2026-10-12 | Added and resolved Q-82–Q-87 for the ESO module: pawprints stay excluded (REQ-12 note), combined products with telescope tick boxes, fact sheets and DOI credits, no off-centre or 'Also inside' lists (REQ-90), repeat epochs dropped (REQ-91), box around the object from ESO's cutout service (REQ-92), survey sky-map thumbnails (REQ-93). ESO row in 7.1 updated: anonymous download confirmed. |

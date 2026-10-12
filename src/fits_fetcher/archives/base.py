@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import requests
 from astropy.io import fits
 
 from fits_fetcher.config import Settings
@@ -69,8 +70,9 @@ class Product:
     grid_regions: list[str] = field(default_factory=list)
     visit: str = ""                     # planets and moons (REQ-80): only images of one visit form a set
     module_gap: bool = False            # REQ-84: NIRCam's two modules with the gap between them not covered
-    boxed: bool = False                 # REQ-85: the archive module delivers a box around the object (IRSA)
+    boxed: bool = False                 # REQ-85: the archive module delivers a box around the object (IRSA, ESO)
     chip: str = ""                      # a short label on the row, e.g. "short frames" (REQ-89)
+    survey: str = ""                    # ESO: the data collection within the telescope, e.g. "VHS" (REQ-90)
 
     @property
     def key(self) -> str:
@@ -121,6 +123,19 @@ class InsideObject:
     dec: float
     offset_arcmin: float                 # from the searched object's centre
     sets: list[InsideGroup] = field(default_factory=list)
+
+
+class TimeoutSession(requests.Session):
+    """pyvo's SIA and TAP calls have no time limit of their own; the archive timeout (S-32) stops waiting, this
+    stops the thread."""
+
+    def __init__(self, timeout: float):
+        super().__init__()
+        self.timeout = timeout
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", self.timeout)
+        return super().request(method, url, **kwargs)
 
 
 class ArchiveError(Exception):

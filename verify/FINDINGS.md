@@ -307,3 +307,44 @@ The Moon, Venus and Mercury return no moving-target images.
 All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0).
 
 **Not yet checked live:** the SIA search itself (column values, `access_url` form per collection), and a Spitzer download, because the search was down.
+
+## 20 — ESO module (REQ-90 to REQ-93), 2026-10-12 (`20_eso.py`)
+
+**Access.** ObsCore TAP (`archive.eso.org/tap_obs`) answers in 0.2–1.5 s. Public files download **anonymously** from `dataportal.eso.org/dataPortal/file/<ADP id>` with `Accept-Ranges`. Each row's `access_url` is a DataLink document listing the file, a **SODA cutout service** (`dataPortal/soda/sync`), PDF previews, ancillary files (confidence/weight maps) and progenitors.
+
+**What ESO holds (every image collection, grouped).** Combined products have a blank `dataproduct_subtype`; unmerged multi-chip files say `pawprint`. Pawprint-only: VST-ATLAS (31k), VPHAS+ (29k, incl. Hα), VIMOS, most VISTA epochs, SPHERE. Combined: VISTA tiles (VHS 32k, VVV 29k, VVVX 19k, VMC, VIKING, VIDEO, VISIONS, GCAV, SHARKS, UltraVISTA), VST coadds (KiDS 6.8k averaging 1.4 GB, OMEGACAM_INAF, FDS, ARP_VST, VEGAS), HAWK-I stacks (7.6k), SOFI (PESSTO, ePESSTO+). Also ALMA, APEX bolometer maps, NGTS, ERIS, NACO and VISIR, which aren't searched.
+
+**Pawprints (Q-82).** A SODA cutout of a VST-ATLAS pawprint around NGC 253 came back as 6 CCD pieces (`ESO_CCD_#84` …), each on its own grid. Kept out under REQ-12; with them out, NGC 253, NGC 55 and NGC 300 get no ESO set.
+
+**Cutouts (REQ-92).** `CIRCLE=ra dec r` returns the square of side 2r: 0.05° gave 1054 px at 0.341″ (VHS J, 1 MB, 4.6 s). **No resampling:** CRPIX moves by whole pixels (VHS J 7826.012 → 968.012; HAWK-I 2318.610 → 80.610). VISTA and VST cutouts are Rice tile-compressed with the image in HDU 1 (about 0.8 bytes per pixel, like the files); HAWK-I and SOFI come as plain 32-bit floats in the primary HDU. A box past the edge comes back clipped.
+
+**No shared grids.** VHS Y, J and Ks tiles of one night (179.A-2010(K), MJD 57088.28) have different NAXIS, CRPIX and CRVAL (e.g. CRVAL1 203.74109 vs 203.74058); HAWK-I J, H, Ks and Brγ of one pointing differ too. ESO sets need registration; no Grid letters.
+
+**Previews (REQ-93).** Only PDFs (`previews/v1/files/<id>/preview?format=DOWNLOAD`; PNG/JPEG refused). CDS has sky maps for VHS (`wfau.roe.ac.uk/P/VISTA/VHS/Y,J,H,K`), VIKING, VVV (Z, Y, J; H split bulge/disk; no Ks), UltraVISTA and KiDS (colour maps only). hips2fits draws M83 from the VHS J map in 2.6 s (8.8 KB); outside a survey the image comes back blank (4.2 KB).
+
+**Footprint bug found and fixed.** ESO writes `POLYGON J2000 ra dec …`; the parser read the `2000` of 'J2000' as a coordinate, so every ESO footprint failed the centre test. Frame names are now skipped.
+
+**Search results** (default 3 filters):
+
+| Object | Combined rows → images (REQ-91) | Sets |
+|---|---|---|
+| M83 | 24 → 21 | HAWK-I J H Ks Brγ (4 pointings per filter, lowest coverage 38%); VHS Y J Ks (100%) |
+| NGC 7293 | 3 → 3 | VHS Y J Ks (100%) |
+| M42 | 6 → 5 | HAWK-I J H Ks (3%: 7.5′ field on a 66′ nebula) |
+| M8 | 109 → 10 | VVV/VVVX Z Y J H Ks |
+| NGC 3372 | 19 → 3 | VVVX J H Ks |
+| NGC 1365 | 33 → 15 | FDS u g r i (100%); HAWK-I Y J H Ks (100%); SOFI J H Ks (92%) |
+| NGC 5128 | 40 → 17 | ARP_VST g r NB659 i (100%); SOFI J H Ks (9%) |
+| NGC 104 | 40 → 6 | VMC/VHS Y J Ks (100%) |
+| NGC 253, NGC 300 | 0 / 4 → 0 sets | (pawprints only, or 2 filters) |
+
+**Download chain on real files** (M83, 1.5 × 13.8′ = 20.7′ box):
+
+| Images | Output | Fetched | Notes |
+|---|---|---|---|
+| VHS Y, J, Ks | 3507–3519 × 3638 px | 10–13 MB each, 5–7 s | clipped by about 120 px on one side (M83 sits 1,690 px from the tile edge), warning shown |
+| HAWK-I J, H, Ks, Brγ (nearest pointing) | the whole 4458–4590 px stack | 79–84 MB each, 3–5 s | the box is bigger than the 7.5′ field; M83's centre is in a corner of each pointing |
+
+All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0); star-core repair found no holes (VISTA and HAWK-I saturated cores aren't blank); the credits list the HAWK-I (DOI 34) and VHS (DOI 57) collections. The VHS J box shows the whole galaxy cleanly. One HAWK-I Ks quarter has a **darker background** than the others (per-detector sky level in ESO's own stack), now listed in the fact sheet.
+
+**Open.** The OmegaCAM Hα filter NB_659 (653–665 nm) is labelled '[NII]', because the line label takes the nearest line to its centre (659 nm) and its band holds both Hα and [NII]. Ticking 'Hα' in the line filter therefore doesn't pick it.

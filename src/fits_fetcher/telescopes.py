@@ -132,6 +132,97 @@ TELESCOPES: dict[str, dict] = {
         "link": "https://irsa.ipac.caltech.edu/Missions/2mass.html",
         "link_label": "Mission page at IRSA",
     },
+    # ESO (REQ-90). Keys are the `eso_telescopes` setting's names; each holds several ESO data collections.
+    "VISTA": {
+        "name": "VISTA",
+        "full_name": "Visible and Infrared Survey Telescope for Astronomy (ESO)",
+        "facts": [
+            ("Mirror", "4.1 m"),
+            ("Where", "Cerro Paranal, Chile (ground-based)"),
+            ("Active", "VIRCAM camera 2009–2023"),
+            ("Camera used", "VIRCAM: 16 detectors with wide gaps; six shifted 'pawprints' make one gap-free tile "
+                            "of about 1.5 deg², 0.34″ pixels. FITS-fetcher uses the tiles only."),
+            ("Wavelengths", "Z 0.88, Y 1.02, J 1.25, H 1.65 and Ks 2.15 µm (near-infrared)"),
+            ("Surveys", "VHS (whole southern sky), VVV and VVVX (Milky Way plane and bulge), VMC (Magellanic "
+                        "Clouds), VIKING, VIDEO, UltraVISTA and others"),
+        ],
+        "artifacts": [
+            "Depth is uneven across a tile: strips along two edges are covered by one pawprint instead of two, so "
+            "they're noisier.",
+            "The sky is subtracted on scales of a few arcminutes, so faint light around large galaxies and "
+            "nebulae can be removed or leave dark halos.",
+            "Bright stars saturate, with ghost rings, cross-talk dots along detector rows and persistence.",
+            "Different filters are separate tiles on slightly different pixel grids, so they need registration.",
+            "Pixel values are in instrument units (ADU); the header's PHOTZP gives the magnitude scale.",
+        ],
+        "link": "https://www.eso.org/public/teles-instr/paranal-observatory/surveytelescopes/vista/",
+        "link_label": "Telescope page at ESO",
+    },
+    "VST": {
+        "name": "VST",
+        "full_name": "VLT Survey Telescope (ESO)",
+        "facts": [
+            ("Mirror", "2.6 m"),
+            ("Where", "Cerro Paranal, Chile (ground-based)"),
+            ("Active", "Since 2011"),
+            ("Camera used", "OmegaCAM: 32 CCDs covering 1° × 1°, 0.21″ pixels. FITS-fetcher uses combined images "
+                            "only (KiDS, FDS, VEGAS and other deep coadds), not single-pointing pawprints."),
+            ("Wavelengths", "u, g, r, i, z (0.33–0.92 µm) and an Hα narrowband filter (NB_659)"),
+        ],
+        "artifacts": [
+            "Reflections inside the camera put large, faint halos and ghosts around bright stars.",
+            "Narrow lines along the CCD gaps where fewer exposures overlap.",
+            "Satellite trails, partly removed when exposures are combined.",
+            "Most objects are only in g and r, or not covered at all: few of ESO's VST surveys were released as "
+            "combined images.",
+            "Pixel values are in instrument units (ADU or ADU/s); the header's PHOTZP gives the magnitude scale.",
+        ],
+        "link": "https://www.eso.org/public/teles-instr/paranal-observatory/surveytelescopes/vst/",
+        "link_label": "Telescope page at ESO",
+    },
+    "HAWKI": {
+        "name": "VLT",
+        "full_name": "Very Large Telescope, Unit Telescope 4 (ESO), with HAWK-I",
+        "facts": [
+            ("Mirror", "8.2 m"),
+            ("Where", "Cerro Paranal, Chile (ground-based)"),
+            ("Active", "HAWK-I since 2007; adaptive optics (GRAAL) since 2017"),
+            ("Camera used", "HAWK-I: four detectors with a 15″ cross-shaped gap, 7.5′ field, 0.106″ pixels; "
+                            "stacks of several shifted exposures"),
+            ("Wavelengths", "Y, J, H, Ks (0.97–2.31 µm) and narrowband filters such as Brγ, H₂ and NB2090"),
+        ],
+        "artifacts": [
+            "A cross-shaped strip through the middle with less depth, where the four detectors' gaps were covered "
+            "by fewer exposures.",
+            "The four detectors' quarters can have different background levels, so one quarter may look darker "
+            "(seen in an M83 Ks stack, verification step 20).",
+            "The field is only 7.5′ across: larger objects are covered by several pointings, each its own image.",
+            "Sky subtraction removes light spread over most of the field, so large nebulae can look patchy.",
+            "Bright stars saturate, with persistence and cross-talk.",
+            "Pixel values are in instrument units (ADU); the header's PHOTZP gives the magnitude scale.",
+        ],
+        "link": "https://www.eso.org/sci/facilities/paranal/instruments/hawki.html",
+        "link_label": "Instrument page at ESO",
+    },
+    "SOFI": {
+        "name": "NTT",
+        "full_name": "New Technology Telescope (ESO), with SOFI",
+        "facts": [
+            ("Mirror", "3.58 m"),
+            ("Where", "La Silla, Chile (ground-based)"),
+            ("Active", "SOFI from 1998; the images FITS-fetcher finds are mostly from PESSTO (since 2012)"),
+            ("Camera used", "SOFI: one detector, 4.9′ field, 0.29″ pixels; stacks of shifted exposures"),
+            ("Wavelengths", "J 1.25, H 1.65 and Ks 2.16 µm (near-infrared)"),
+        ],
+        "artifacts": [
+            "Mostly supernova follow-up, so exposures are short and the images shallow; the galaxy is there "
+            "because a supernova went off in it.",
+            "The field is only 4.9′ across, so large galaxies are cut off.",
+            "Cross-talk and residual sky patterns from the short exposures.",
+        ],
+        "link": "https://www.eso.org/sci/facilities/lasilla/instruments/sofi.html",
+        "link_label": "Instrument page at ESO",
+    },
 }
 
 

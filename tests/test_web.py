@@ -105,8 +105,8 @@ def test_search_only_ticked_mast_telescopes(monkeypatch, product):
     assert len(seen) == 2 and ev[-1][0] == "end"
 
 
-def test_irsa_telescopes_get_tick_boxes_too(monkeypatch):
-    """REQ-87: each archive with telescopes gets its own tick boxes; one `telescopes` list covers all of them."""
+def test_irsa_and_eso_telescopes_get_tick_boxes_too(monkeypatch):
+    """REQ-87, REQ-90: each archive with telescopes gets its own tick boxes; one `telescopes` list covers all."""
     seen = {}
 
     def fake(name, field):
@@ -118,16 +118,21 @@ def test_irsa_telescopes_get_tick_boxes_too(monkeypatch):
         return A
 
     monkeypatch.setattr(webapp, "ARCHIVES", {"MAST": fake("MAST", "mast_collections"),
+                                             "ESO": fake("ESO", "eso_telescopes"),
                                              "IRSA": fake("IRSA", "irsa_collections")})
     c = TestClient(webapp.create_app(Settings()))
     info = c.get("/api/info").json()
     assert info["archive_telescopes"] == {"MAST": ["HST", "JWST", "PS1"],
+                                          "ESO": ["VISTA", "VST", "HAWKI", "SOFI"],
                                           "IRSA": ["spitzer_seip", "wise_allwise", "twomass_allsky"]}
+    assert info["telescopes"]["HAWKI"]["name"] == "VLT" and "ESO" in info["telescopes"]["HAWKI"]["link_label"]
     assert info["telescopes"]["wise_allwise"]["name"] == "WISE" and "IRSA" in info["telescopes"]["wise_allwise"]["link_label"]
-    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST,IRSA", "telescopes": "JWST,wise_allwise"}).text)
-    assert seen == {"MAST": ["JWST"], "IRSA": ["wise_allwise"]}
-    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST,IRSA", "telescopes": "HST"}).text)
+    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST,ESO,IRSA",
+                                             "telescopes": "JWST,wise_allwise,HAWKI"}).text)
+    assert seen == {"MAST": ["JWST"], "ESO": ["HAWKI"], "IRSA": ["wise_allwise"]}
+    ev = events(c.get("/api/search", params={"ra": 1, "dec": 2, "archives": "MAST,ESO,IRSA", "telescopes": "HST"}).text)
     assert ("status", {"archive": "IRSA", "state": "skipped", "message": "IRSA: no telescope ticked."}) in ev
+    assert ("status", {"archive": "ESO", "state": "skipped", "message": "ESO: no telescope ticked."}) in ev
 
 
 def test_quit(client):

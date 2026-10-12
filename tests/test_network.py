@@ -2,6 +2,7 @@
 import pytest
 import requests
 
+from fits_fetcher.archives.eso import EsoArchive
 from fits_fetcher.archives.mast import MastArchive
 from fits_fetcher.config import Settings
 from fits_fetcher.grouping import build_sets
@@ -34,3 +35,18 @@ def test_m51_mast_sets_and_file_urls_exist():
         seen.add(kind)
         r = requests.head(p.url, allow_redirects=True, timeout=60)
         assert r.status_code == 200, f"{kind}: {p.url}"
+
+
+def test_m83_eso_sets_and_a_cutout(tmp_path):
+    """REQ-90 to REQ-92: M83 has HAWK-I J, H, Ks, BrG stacks and a VHS Y, J, Ks set; one small box downloads."""
+    from fits_fetcher.archives.base import Target
+    from fits_fetcher.transfer import Transfer
+
+    (t,) = resolve("M83")
+    products = EsoArchive(Settings()).search(t, 0.02)
+    sets = {s.instruments[0]: {r.filter for r in s.rows} for s in build_sets(products, min_filters=3)}
+    assert {"J", "H", "Ks", "BrG"} <= sets["HAWK-I"] and {"Y", "J", "Ks"} <= sets["VIRCAM"]
+    small = Target(query="M83", matched_id="M 83", ra=t.ra, dec=t.dec, size_arcmin=1.0)
+    p = next(p for p in EsoArchive(Settings()).search(small, 0.02) if p.survey == "VHS")
+    f = EsoArchive(Settings()).fetch(p, small, Transfer(tmp_path), 2.0, lambda d, n: None)
+    assert abs(f.header["NAXIS1"] - p.width) <= 2 and not f.box_clipped

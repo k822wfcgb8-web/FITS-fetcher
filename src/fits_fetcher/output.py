@@ -67,6 +67,21 @@ CREDITS = {
                        "Administration and the National Science Foundation. " + _IRSA),
 }
 
+# ESO (REQ-90): its data access policy (archive.eso.org/cms/eso-data-access-policy.html, checked 2026-10-12) asks
+# for the programme statement and, for processed data, the DOI of the data collection, listed at
+# archive.eso.org/wdb/wdb/doi/collections/query. Keyed by the collection (FFSURVEY), e.g. "VHS".
+ESO_DOI = {
+    "VHS": 57, "VVV": 67, "VVVX": 68, "VMC": 64, "VIKING": 59, "VIDEO": 58, "VINROUGE": 61, "VISIONS": 63,
+    "GCAV": 26, "SHARKS": 75, "UltraVISTA": 52, "KIDS": 37, "OMEGACAM_INAF": 98, "FDS": 23, "ARP_VST": 99,
+    "VEGAS": 54, "HAWKI": 34, "HUGS": 35, "195.B-0283": 9, "092.A-0472": 7, "60.A-9284H": 13, "PESSTO": 46,
+    "ePESSTOplus": 86,
+}
+_ESO = ("Based on observations collected at the European Southern Observatory under ESO programme(s) {programs}, "
+        "and/or processed data created thereof.")
+for _coll, _doi in ESO_DOI.items():
+    CREDITS[_coll] = (f"ESO {_coll}", _ESO + f" Based on data obtained from the ESO Science Archive Facility with "
+                                             f"DOI: https://doi.org/10.18727/archive/{_doi}.")
+
 
 def safe(name: str) -> str:
     """A file or folder name that works on macOS, Linux and Windows."""
@@ -101,6 +116,8 @@ def _programme(header: fits.Header) -> str:
     for key in ("PROPOSID", "PROGRAM"):
         if str(header.get(key, "")).strip():
             return str(header[key]).strip().lstrip("0") or "0"
+    if str(header.get("PROG_ID", "")).strip():  # ESO, e.g. '179.A-2010(K)'; leading zeros belong to it
+        return str(header["PROG_ID"]).strip()
     m = re.match(r"(?:hst_|jw)0*(\d+)", str(header.get("FFOBSID", "")).lower())
     return m.group(1) if m else ""
 
@@ -115,7 +132,7 @@ def write_credits(object_dir: Path) -> Path | None:
             h = fits.getheader(p)
         except (OSError, ValueError):
             continue
-        coll = h.get("FFCOLL")
+        coll = h.get("FFSURVEY") or h.get("FFCOLL")  # ESO credits each data collection (REQ-90)
         if not coll:
             continue
         prog = _programme(h)

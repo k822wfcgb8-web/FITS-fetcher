@@ -1,7 +1,7 @@
 """Footprint tests for REQ-14 / REQ-17: does an image's sky region contain the object's centre?
 
 Archives describe footprints as IVOA STC-S strings in `s_region`, e.g.
-"POLYGON 202.1 47.0 202.8 47.0 202.8 47.4 202.1 47.4" (optionally with a frame such as ICRS),
+"POLYGON 202.1 47.0 202.8 47.0 202.8 47.4 202.1 47.4" (optionally with a frame such as ICRS or ESO's J2000),
 sometimes as several polygons, or as "CIRCLE ra dec radius".
 """
 from __future__ import annotations
@@ -18,7 +18,8 @@ def shapes(s_region: str) -> list[tuple[str, list[float]]]:
     parts = _SHAPE.split(s_region or "")
     shapes = []
     for kind, body in zip(parts[1::2], parts[2::2]):
-        nums = [float(n) for n in _NUMBER.findall(body)]
+        # Whole numbers only: a frame name such as ESO's 'J2000' isn't a coordinate.
+        nums = [float(t) for t in re.split(r"[\s,()]+", body) if _NUMBER.fullmatch(t)]
         shapes.append((kind.upper(), nums))
     return shapes
 
@@ -259,3 +260,18 @@ def pixel_box(header, ra: float, dec: float, size_arcmin: float, shape: tuple[in
     if box[0] >= box[1] or box[2] >= box[3]:
         raise ValueError("The object lies outside this image.")
     return box, clipped
+
+
+def clipped_box_px(ra: float, dec: float, box_px: int, centre_ra: float | None, centre_dec: float | None,
+                   nx: float | None, ny: float | None, scale_arcsec: float) -> tuple[int, int]:
+    """REQ-86: (width, height) in pixels of a `box_px` square box around (ra, dec) once clipped to an image of
+    nx x ny pixels centred on (centre_ra, centre_dec), assuming north up. The unclipped box if the image size or
+    centre is unknown."""
+    if not nx or not ny or centre_ra is None or centre_dec is None:
+        return box_px, box_px
+    dx = (ra - centre_ra + 180) % 360 - 180
+    dx *= math.cos(math.radians(centre_dec)) * 3600 / scale_arcsec
+    dy = (dec - centre_dec) * 3600 / scale_arcsec
+    w = max(1, round(min(dx + box_px / 2, nx / 2) - max(dx - box_px / 2, -nx / 2)))
+    h = max(1, round(min(dy + box_px / 2, ny / 2) - max(dy - box_px / 2, -ny / 2)))
+    return w, h

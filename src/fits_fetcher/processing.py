@@ -29,7 +29,8 @@ from fits_fetcher.archives.base import Fetched, Product, Target
 KEEP = ("TELESCOP", "INSTRUME", "DETECTOR", "FILTER", "FILTER1", "FILTER2", "PUPIL", "EXPTIME", "TEXPTIME",
         "XPOSURE", "EFFEXPTM", "DATE-OBS", "TIME-OBS", "DATE-BEG", "DATE-END", "EXPSTART", "EXPEND", "BUNIT",
         "TARGNAME", "PROPOSID", "PROGRAM", "OBSERVTN", "VISIT", "PHOTMODE", "PHOTFLAM", "PHOTFNU", "PHOTPLAM",
-        "PHOTBW", "PHOTZPT", "PHOTMJSR", "PHOTUJA2", "PIXAR_SR", "PIXAR_A2", "MAGZP", "MAGZPUNC")
+        "PHOTBW", "PHOTZPT", "PHOTMJSR", "PHOTUJA2", "PIXAR_SR", "PIXAR_A2", "MAGZP", "MAGZPUNC",
+        "PROG_ID", "PHOTZP", "PHOTZPER", "ABMAGLIM")
 
 # REQ-67: a hole next to a bright star is recognised by its edge. Measured on M37 (Pan-STARRS i, z): the brightest
 # tenth of the pixels within 3 px of star holes lay 102-523 sigma above the sky, blank blocks and borders 2-6 sigma.
@@ -431,6 +432,8 @@ def build_header(f: Fetched, product: Product, target: Target, wcs: WCS, options
     h["FFARCH"] = (product.archive, "source archive")
     h["FFCOLL"] = (product.collection, "archive collection")
     h["FFOBSID"] = (product.obs_id, "archive observation ID")
+    if product.survey:
+        h["FFSURVEY"] = (product.survey, "archive survey or data collection")
     for key, value, comment in options.cards():
         h[key] = (value, comment)
     h["FFNREG"] = (repaired.regions, "star-core regions filled")

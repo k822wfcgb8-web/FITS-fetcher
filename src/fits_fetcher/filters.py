@@ -6,6 +6,7 @@ import re
 # Named broadband filters (central wavelength in µm).
 _NAMED = {
     "u": 0.355, "g": 0.48, "r": 0.62, "i": 0.75, "z": 0.87, "y": 0.96,   # SDSS / Pan-STARRS
+    "Z": 0.88, "Y": 1.02,                                                 # VISTA, HAWK-I
     "J": 1.25, "H": 1.65, "K": 2.17, "Ks": 2.15,                          # 2MASS / VISTA
     "W1": 3.4, "W2": 4.6, "W3": 12.0, "W4": 22.0,                         # WISE
     "IRAC1": 3.6, "IRAC2": 4.5, "IRAC3": 5.8, "IRAC4": 8.0, "MIPS24": 24.0,  # Spitzer

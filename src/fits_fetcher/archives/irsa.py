@@ -27,7 +27,7 @@ import requests
 from astropy.time import Time
 
 from fits_fetcher import filters, footprint
-from fits_fetcher.archives.base import Archive, ArchiveError, Fetched, Product, Target
+from fits_fetcher.archives.base import Archive, ArchiveError, Fetched, Product, Target, TimeoutSession
 from fits_fetcher.transfer import Progress, Transfer, TransferError
 
 log = logging.getLogger(__name__)
@@ -64,19 +64,6 @@ BANDS = {
     "W1": ("W1", "W1"), "W2": ("W2", "W2"), "W3": ("W3", "W3"), "W4": ("W4", "W4"),
     "J": ("J", "J"), "H": ("H", "H"), "K": ("Ks", "K"), "KS": ("Ks", "K"),
 }
-
-
-class _TimeoutSession(requests.Session):
-    """pyvo's SIA calls have no time limit of their own; the archive timeout (S-32) stops waiting, this stops the
-    thread."""
-
-    def __init__(self, timeout: float):
-        super().__init__()
-        self.timeout = timeout
-
-    def request(self, method, url, **kwargs):
-        kwargs.setdefault("timeout", self.timeout)
-        return super().request(method, url, **kwargs)
 
 
 def band_of(name: str) -> tuple[str, str] | None:
@@ -163,7 +150,7 @@ class IrsaArchive(Archive):
 
     def _query(self, target: Target, radius_deg: float, collections: list[str]):
         try:
-            service = pyvo.dal.SIA2Service(SIA_URL, session=_TimeoutSession(self.settings.archive_timeout_s),
+            service = pyvo.dal.SIA2Service(SIA_URL, session=TimeoutSession(self.settings.archive_timeout_s),
                                            check_baseurl=False)
             return service.search(pos=(target.ra, target.dec, radius_deg), collection=collections).to_table()
         except Exception as e:
@@ -199,13 +186,7 @@ class IrsaArchive(Archive):
         box_px = math.ceil(round(side * 60 / scale, 6))
         nx, ny = _float(_col(r, "s_xel1")), _float(_col(r, "s_xel2"))
         c_ra, c_dec = _float(_col(r, "s_ra")), _float(_col(r, "s_dec"))
-        w, h = box_px, box_px
-        if nx and ny and c_ra is not None and c_dec is not None:  # REQ-86: the box clipped at the image edge
-            dx = (target.ra - c_ra + 180) % 360 - 180
-            dx *= math.cos(math.radians(c_dec)) * 3600 / scale
-            dy = (target.dec - c_dec) * 3600 / scale
-            w = max(1, round(min(dx + box_px / 2, nx / 2) - max(dx - box_px / 2, -nx / 2)))
-            h = max(1, round(min(dy + box_px / 2, ny / 2) - max(dy - box_px / 2, -ny / 2)))
+        w, h = footprint.clipped_box_px(target.ra, target.dec, box_px, c_ra, c_dec, nx, ny, scale)  # REQ-86
         if spec.cutout:
             size = w * h * 4
         else:  # whole mosaic rows (REQ-57)

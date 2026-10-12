@@ -44,8 +44,8 @@ QUERY_RADIUS_DEG = 0.02
 
 PROGRESS_INTERVAL_S = 0.3
 
-# Archives whose telescopes get tick boxes (REQ-72, REQ-87), and the setting listing each one's collections.
-TELESCOPE_SETTINGS = {"MAST": "mast_collections", "IRSA": "irsa_collections"}
+# Archives whose telescopes get tick boxes (REQ-72, REQ-87, REQ-90), and the setting listing each one's collections.
+TELESCOPE_SETTINGS = {"MAST": "mast_collections", "ESO": "eso_telescopes", "IRSA": "irsa_collections"}
 
 
 def _sse(event: str, data: dict) -> str:

@@ -40,6 +40,7 @@ class Settings:
     # Collection allow-lists live in configuration, not code (REQ-35, REQ-55, REQ-56).
     mast_collections: list[str] = field(default_factory=lambda: ["HST", "JWST", "PS1"])
     irsa_collections: list[str] = field(default_factory=lambda: ["spitzer_seip", "wise_allwise", "twomass_allsky"])
+    eso_telescopes: list[str] = field(default_factory=lambda: ["VISTA", "VST", "HAWKI", "SOFI"])  # REQ-90
     cadc_excluded_collections: list[str] = field(default_factory=lambda: ["HST", "HSTHLA", "JWST"])
 
     @classmethod

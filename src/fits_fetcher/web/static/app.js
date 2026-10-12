@@ -78,7 +78,7 @@ async function init() {
 }
 
 // ---------- telescopes (REQ-72–74, REQ-87) ----------
-// A row of tick boxes per archive with telescopes (MAST, IRSA), shown while that archive is ticked. The name beside
+// A row of tick boxes per archive with telescopes (MAST, ESO, IRSA), shown while that archive is ticked. The name beside
 // each box opens its fact sheet.
 function buildTelescopeBoxes() {
   for (const [archive, collections] of Object.entries(state.info.archive_telescopes || {})) {
