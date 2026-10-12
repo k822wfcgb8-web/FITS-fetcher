@@ -306,7 +306,14 @@ The Moon, Venus and Mercury return no moving-target images.
 
 All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0).
 
-**Not yet checked live:** the SIA search itself (column values, `access_url` form per collection), and a Spitzer download, because the search was down.
+**Live search, once SIA was back (09:52; `19_irsa_search.py`, `19c_irsa_live.py`).**
+- Columns are the ObsCore names the module reads. Values: `obs_collection` spitzer_seip / wise_allwise / twomass_allsky; `instrument_name` IRAC, MIPS, WISE, 2MASS Survey Camera; bands IRAC1–4, MIPS24, W1–W4, J, H, K. `access_url` is the IBE file for WISE and 2MASS (so the cutout option works) and the `/data/SPITZER/…` file for Spitzer.
+- Five test objects, 0.4–22 s per collection (the first query after the outage was slow). NGC 1300 has no Spitzer SEIP data.
+- **Spitzer lists four science files per region and band**: `mosaic`, `median_mosaic`, `-short` `mosaic`, `-short` `median_mosaic` → median ones dropped (REQ-94). **All share one `obs_id`** (`50069620.50069620-0.IRAC`), which would have given the same product key and output file name to different files; the file name is now the ID.
+- Spitzer rows have **no exposure time or date** (`t_exptime`, `t_min` blank); the saved header's EXPTIME has it (IRAC 268–275 s for M51). So short-frames mosaics are listed after the full-depth one, and 'Select deepest' picks the full-depth one.
+- Coverage of large objects by one image: M42 (65′) WISE 65%, Spitzer 40%, 2MASS 6%; NGC 7293 (25′) 2MASS 28%.
+
+**M51 end to end:** search 1.2 s, 16 images in three sets (WISE W1–W4, Spitzer IRAC 1–4 with short frames, 2MASS J-H-Ks). IRAC 1–4: 1680 × 1680 px boxes, identical CRPIX, 33.2 MB each fetched as rows of a 120 MB mosaic (as estimated), 1–6 s; MIPS 24: 412 × 412 px, 2.4 MB. All pass the compatibility check and load in siril-cli. Through the page: the WISE set downloaded as four 593 × 593 px files with identical CRPIX, and CREDITS.txt carries the AllWISE and IRSA statements.
 
 ## 20 — ESO module (REQ-90 to REQ-93), 2026-10-12 (`20_eso.py`)
 

@@ -95,9 +95,20 @@ def test_search_applies_selection_rules(fake_sia):
 
 def test_short_frame_mosaics_are_listed_and_labelled(fake_sia):
     url = "https://irsa.ipac.caltech.edu/data/SPITZER/Enhanced/SEIP/images/5/0057/50057690/0/50057690-0/50057690.50057690-0{}.IRAC.1.mosaic.fits"
-    fake_sia([{"obs_collection": "spitzer_seip", "energy_bandpassname": "IRAC1", "access_url": url.format(s),
-               "obs_id": f"r1{s}", "t_exptime": e} for s, e in (("", 104.0), ("-short", 3.9))])
-    full, short = sorted(irsa.IrsaArchive(Settings()).search(M51, 0.02), key=lambda p: p.chip)
+    median = url.replace(".mosaic.", ".median_mosaic.")
+    fake_sia([{"obs_collection": "spitzer_seip", "energy_bandpassname": "IRAC1", "access_url": u.format(s),
+               "obs_id": "50057690.50057690-0.IRAC", "t_exptime": e}  # one archive ID for all of them
+              for s, e in (("", 104.0), ("-short", 3.9)) for u in (url, median)])
+    found = irsa.IrsaArchive(Settings()).search(M51, 0.02)
+    assert len(found) == 2 and not any("median" in p.url for p in found)  # REQ-94
+    full, short = found  # full depth first: Spitzer has no exposure times to sort by
+    from fits_fetcher.grouping import build_sets
+    others = [irsa.IrsaArchive(Settings())._product(r, M51) for r in sia_table([
+        {"obs_collection": "spitzer_seip", "energy_bandpassname": b, "obs_id": "x",
+         "access_url": url.format("").replace("IRAC.1", f"IRAC.{b[-1]}")} for b in ("IRAC2", "IRAC3")])]
+    rows = build_sets(found + others, min_filters=3)[0].rows
+    assert rows[0].products[0].chip == ""  # 'Select deepest' picks the full-depth IRAC1 mosaic
+    assert full.key != short.key and short.obs_id == "50057690.50057690-0-short.IRAC.1.mosaic"
     assert (full.chip, short.chip) == ("", "short frames") and "short frames only" in short.product_level
     assert full.filter == short.filter == "IRAC1" and full.grid == short.grid != ""
 

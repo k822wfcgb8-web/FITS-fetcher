@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.20a (approved)
+**Version:** 1.21 (approved)
 **Date:** 2026-10-12
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -164,6 +164,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 - **REQ-92:** *(Resolved Q-83)* ESO images are delivered as a **box centred on the object, 1.5× its size**, the Pan-STARRS and IRSA rule (REQ-68, REQ-85), cut by **ESO's SODA cutout service on the file's own pixel grid with no resampling** (CRPIX moves by whole pixels; verification step 20). Whole files are 150–230 MB (VISTA tiles) to about 1.4 GB (KiDS). A box past the image edge is clipped, with coverage showing what's missing (REQ-86). The 'Cut around the object' option doesn't change ESO boxes.
 - **REQ-93:** *(Resolved Q-84)* ESO's own previews are PDFs only, so thumbnails come from **CDS hips2fits, drawn from the survey's own sky map** where one exists (VHS, VIKING, VVV in Z/Y/J, UltraVISTA, KiDS colour maps). Otherwise the row shows the placeholder, and a thumbnail is made from the image once it's downloaded (REQ-27).
 - **REQ-89:** *(Resolved Q-81)* Spitzer IRAC **'short frames' mosaics** (from the short exposures of high-dynamic-range observations; e.g. 3.9 s against 104 s) are **listed under their filter** with the full-depth mosaics (REQ-53), with a **'short frames' chip** explaining that they're shallower but unsaturated. They share the full-depth mosaics' pixel grid, so they get the same Grid letter (REQ-60).
+- **REQ-94:** *(Resolved Q-88, after the live IRSA search listed four Spitzer files per band)* Spitzer **median-combined mosaics** (`median_mosaic`, the same exposures combined by median instead of the standard outlier-rejected mean) are **not offered**. Each IRAC band shows the standard mosaic and, where there is one, the short-frames mosaic (REQ-89).
 - **REQ-35:** The CADC module keeps an explicit **exclusion list** of mirrored collections (initially HST and JWST). The list lives in configuration, not code, so it can be updated if CADC adds new mirrors. During implementation, the CADC collection list must be checked against MAST, ESO and IRSA holdings to finalise it *(verify)*.
 
 ### 7.3 Result metadata to display (suggested)
@@ -362,6 +363,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-85~~ | ESO telescopes: **resolved → tick boxes for VISTA, VST, VLT (HAWK-I) and NTT (SOFI) (REQ-90)** | — |
 | ~~Q-86~~ | Repeat epochs (M8: 80 VVV Ks tiles): **resolved → not wanted (no photometry); deepest image per pointing and collection (REQ-91)** | — |
 | ~~Q-87~~ | ESO in off-centre sets and 'Also inside': **resolved → neither (REQ-90)** | — |
+| ~~Q-88~~ | Spitzer median-combined mosaics: **resolved → not offered (REQ-94)** | — |
 
 ---
 
@@ -401,3 +403,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.19 | 2026-10-12 | Added and resolved Q-77–Q-80 for the IRSA module: box around the object on the original grid (REQ-85), clipped at the image edge (REQ-86), telescope tick boxes and fact sheets (REQ-87), no off-centre or 'Also inside' lists (REQ-88). Added and resolved Q-81: Spitzer short-frame mosaics listed with a chip (REQ-89). |
 | 1.20 | 2026-10-12 | Added and resolved Q-82–Q-87 for the ESO module: pawprints stay excluded (REQ-12 note), combined products with telescope tick boxes, fact sheets and DOI credits, no off-centre or 'Also inside' lists (REQ-90), repeat epochs dropped (REQ-91), box around the object from ESO's cutout service (REQ-92), survey sky-map thumbnails (REQ-93). ESO row in 7.1 updated: anonymous download confirmed. |
 | 1.20a | 2026-10-12 | OmegaCAM's NB_659 filter labelled Hα (was [NII], the line nearest its centre), so the Hα line filter (REQ-19) finds it. |
+| 1.21 | 2026-10-12 | Added and resolved Q-88 after the live IRSA search: Spitzer median-combined mosaics not offered (REQ-94). |

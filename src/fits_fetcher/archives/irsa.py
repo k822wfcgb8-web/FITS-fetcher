@@ -12,6 +12,8 @@ Selection and delivery come from verification steps 02, 08 and 19 (verify/FINDIN
 - A box running past the image edge is clipped to the image (REQ-86); coverage shows how much is missing.
 - Thumbnails (REQ-27): IRSA has no preview images, so the CDS hips2fits service draws the box from the survey's
   own sky map (HiPS, made from the same atlas images and mosaics), about 6 KB and 0.5 s each.
+- Spitzer: the standard and 'short frames' mosaics are offered (REQ-89); median-combined copies of the same
+  exposures (`.median_mosaic.`) are not (REQ-94). Spitzer rows have no exposure time or date in the search results.
 - No off-centre sets or 'Also inside' list (REQ-88), and nothing for planets and moons (REQ-79).
 """
 from __future__ import annotations
@@ -22,6 +24,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
+import numpy as np
 import pyvo
 import requests
 from astropy.time import Time
@@ -101,6 +104,15 @@ def short_frames(url: str) -> bool:
     return bool(re.search(r"-short\.IRAC\.\d\.mosaic\.fits", url))
 
 
+def obs_id(collection: str, archive_id: str, url: str) -> str:
+    """The ID that names a product (its key and output file). Spitzer gives one ID to every file of a region and
+    instrument ('50069620.50069620-0.IRAC' for the mosaic and the short-frames mosaic of all four channels), so its
+    file name is used instead: '50069620.50069620-0-short.IRAC.1.mosaic'."""
+    if collection == "spitzer_seip" or not archive_id:
+        return re.sub(r"\.fits(\.gz)?$", "", url.rsplit("/", 1)[-1].split("?")[0])
+    return archive_id
+
+
 def grid_key(collection: str, url: str) -> str:
     """REQ-60: images with the same name share one pixel grid. Only grids checked in verification step 19 are named."""
     if collection == "spitzer_seip" and seip_region(url):
@@ -128,6 +140,8 @@ def _text(v) -> str:
 
 
 def _float(v) -> float | None:
+    if v is np.ma.masked:  # blank in the search results (Spitzer's t_min, t_exptime); float() would warn
+        return None
     try:
         f = float(v)
     except (TypeError, ValueError):
@@ -168,10 +182,13 @@ class IrsaArchive(Archive):
             if (_text(_col(r, "dataproduct_subtype")).lower() != "science"
                     or _text(_col(r, "obs_collection")) not in collections
                     or band_of(_text(_col(r, "energy_bandpassname"))) is None
+                    or ".median_mosaic." in _text(_col(r, "access_url"))  # REQ-94: same data, median-combined
                     or not footprint.contains(_text(_col(r, "s_region")), target.ra, target.dec)):
                 continue
             out.append(self._product(r, target))
-        return out
+        # Spitzer rows have no exposure time, so the deepest-first order (REQ-53) can't tell a short-frames mosaic
+        # from the full-depth one; listing short frames last keeps 'Select deepest' on the full-depth mosaic.
+        return sorted(out, key=lambda p: bool(p.chip))
 
     def _product(self, r, target: Target) -> Product:
         coll = _text(r["obs_collection"])
@@ -195,7 +212,7 @@ class IrsaArchive(Archive):
         region = _text(_col(r, "s_region"))
         return Product(
             archive=self.name, collection=coll, telescope=spec.telescope, instrument=inst, filter=filt,
-            obs_id=_text(_col(r, "obs_id")) or url.rsplit("/", 1)[-1], url=url,
+            obs_id=obs_id(coll, _text(_col(r, "obs_id")), url), url=url,
             wavelength_um=wl or ((lo + hi) / 2 * 1e6 if lo and hi else None),
             bandwidth_um=(hi - lo) * 1e6 if lo and hi else None, band_type=band,
             exptime_s=_float(_col(r, "t_exptime")), obs_date=Time(t_min, format="mjd").isot[:10] if t_min else "",
