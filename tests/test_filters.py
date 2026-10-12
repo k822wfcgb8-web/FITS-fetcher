@@ -48,6 +48,9 @@ def test_line_for():
     assert filters.line_for(0.502) == "[OIII]"
     assert filters.line_for(0.80) is None
     assert filters.line_for(None) is None
+    # OmegaCAM's NB_659 is centred nearer [NII] but is the Hα filter; HST's F658N stays [NII].
+    assert filters.line_for(0.659, filter_name="NB659") == "Hα"
+    assert filters.line_for(0.6584, filter_name="F658N") == "[NII]"
 
 
 def test_quad_filters_are_narrowband():

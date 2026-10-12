@@ -27,7 +27,7 @@ class FilterRow:
 
     def to_dict(self) -> dict:
         return {"filter": self.filter, "wavelength_um": self.wavelength_um, "band_type": self.band_type,
-                "line": filters.line_for(self.wavelength_um) if self.band_type == "narrow" else None,
+                "line": filters.line_for(self.wavelength_um, filter_name=self.filter) if self.band_type == "narrow" else None,
                 "products": [p.to_dict() for p in self.products]}
 
 
@@ -65,7 +65,8 @@ class ColourSet:
         if broad:
             bits.append(f"{len(broad)} broadband ({', '.join(broad)})")
         if narrow:
-            labels = [f"{r.filter} {filters.line_for(r.wavelength_um)}" if filters.line_for(r.wavelength_um) else r.filter
+            labels = [f"{r.filter} {filters.line_for(r.wavelength_um, filter_name=r.filter)}"
+                      if filters.line_for(r.wavelength_um, filter_name=r.filter) else r.filter
                       for r in self.rows if r.band_type == "narrow"]
             bits.append(f"{len(narrow)} narrowband ({', '.join(labels)})")
         return " + ".join(bits)
@@ -175,7 +176,7 @@ def passes(product: Product, band_type: str, lines: set[str]) -> bool:
     if band_type in ("broad", "narrow") and product.band_type != band_type:
         return False
     if lines:
-        return product.band_type == "narrow" and filters.line_for(product.wavelength_um) in lines
+        return product.band_type == "narrow" and filters.line_for(product.wavelength_um, filter_name=product.filter) in lines
     return True
 
 

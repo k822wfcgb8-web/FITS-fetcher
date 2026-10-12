@@ -347,4 +347,4 @@ All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0).
 
 All seven pass the compatibility check (REQ-49) and load in siril-cli (exit 0); star-core repair found no holes (VISTA and HAWK-I saturated cores aren't blank); the credits list the HAWK-I (DOI 34) and VHS (DOI 57) collections. The VHS J box shows the whole galaxy cleanly. One HAWK-I Ks quarter has a **darker background** than the others (per-detector sky level in ESO's own stack), now listed in the fact sheet.
 
-**Open.** The OmegaCAM Hα filter NB_659 (653–665 nm) is labelled '[NII]', because the line label takes the nearest line to its centre (659 nm) and its band holds both Hα and [NII]. Ticking 'Hα' in the line filter therefore doesn't pick it.
+**Hα label (fixed).** The OmegaCAM Hα filter NB_659 (653–665 nm) was labelled '[NII]': the line label took the nearest line to its centre (659 nm), and its band holds both Hα and [NII]. It's now named Hα by filter name (`filters.LINE_FILTERS`), so the line filter's 'Hα' picks it (NGC 5128: 'NB659 Hα'). A rule by passband was rejected because HST's [NII] filter F658N also reaches Hα.

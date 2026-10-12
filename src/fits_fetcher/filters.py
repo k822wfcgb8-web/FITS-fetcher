@@ -63,8 +63,16 @@ def parse(filter_name: str, instrument: str = "") -> tuple[float | None, str]:
     return None, "broad"
 
 
-def line_for(wavelength_um: float | None, tolerance_um: float = 0.004) -> str | None:
+# Filters whose passband holds several lines, named for the one they're built for. OmegaCAM's NB_659 (653-665 nm)
+# holds Hα and [NII] 658.4 nm; its centre is nearer [NII], but it's the Hα filter (verification step 20). Matching
+# by passband instead would turn HST's [NII] filter F658N, whose band also reaches Hα, into Hα.
+LINE_FILTERS = {"NB659": "Hα"}
+
+
+def line_for(wavelength_um: float | None, tolerance_um: float = 0.004, filter_name: str = "") -> str | None:
     """Which emission line (if any) a narrowband filter isolates, for the REQ-19 line filter."""
+    if filter_name in LINE_FILTERS:
+        return LINE_FILTERS[filter_name]
     if wavelength_um is None:
         return None
     best = min(EMISSION_LINES.items(), key=lambda kv: abs(kv[1] - wavelength_um))

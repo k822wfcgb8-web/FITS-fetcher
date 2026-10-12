@@ -117,3 +117,16 @@ def test_many_filters_split_evenly(product):
     assert [len(c["rgb"][ch]) for ch in "BGR"] == [4, 7, 5]
     miri = _hint(product, ["F560W", "F770W", "F1000W", "F1130W", "F1280W", "F1500W", "F1800W", "F2100W"], "MIRI/IMAGE")
     assert miri["rgb"]["G"] == ["F1130W", "F1280W"]
+
+
+def test_omegacam_halpha_filter_counts_as_halpha():
+    """NB659 (653-665 nm) is centred nearer [NII] but is OmegaCAM's Hα filter (verification step 20)."""
+    from fits_fetcher.archives.base import Product
+    vst = [Product(archive="ESO", collection="VST", telescope="VST", instrument="OmegaCAM", filter=f, obs_id=f,
+                   url="https://example/x", wavelength_um=wl, band_type=band)
+           for f, wl, band in (("g", 0.48, "broad"), ("r", 0.62, "broad"), ("NB659", 0.659, "narrow"))]
+    (s,) = build_sets(vst, min_filters=3)
+    assert "NB659 Hα" in s.readiness
+    assert next(r for r in s.to_dict()["rows"] if r["filter"] == "NB659")["line"] == "Hα"
+    (ha,) = build_sets(vst, min_filters=1, lines={"Hα"})
+    assert [r.filter for r in ha.rows] == ["NB659"]

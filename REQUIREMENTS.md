@@ -1,6 +1,6 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.20 (approved)
+**Version:** 1.20a (approved)
 **Date:** 2026-10-12
 **Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
@@ -400,3 +400,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.18 | 2026-10-11 | Added and resolved Q-75, Q-76: "2 modules, gap not covered" chip on NIRCam images whose footprint is in separate pieces (REQ-84). |
 | 1.19 | 2026-10-12 | Added and resolved Q-77–Q-80 for the IRSA module: box around the object on the original grid (REQ-85), clipped at the image edge (REQ-86), telescope tick boxes and fact sheets (REQ-87), no off-centre or 'Also inside' lists (REQ-88). Added and resolved Q-81: Spitzer short-frame mosaics listed with a chip (REQ-89). |
 | 1.20 | 2026-10-12 | Added and resolved Q-82–Q-87 for the ESO module: pawprints stay excluded (REQ-12 note), combined products with telescope tick boxes, fact sheets and DOI credits, no off-centre or 'Also inside' lists (REQ-90), repeat epochs dropped (REQ-91), box around the object from ESO's cutout service (REQ-92), survey sky-map thumbnails (REQ-93). ESO row in 7.1 updated: anonymous download confirmed. |
+| 1.20a | 2026-10-12 | OmegaCAM's NB_659 filter labelled Hα (was [NII], the line nearest its centre), so the Hα line filter (REQ-19) finds it. |
