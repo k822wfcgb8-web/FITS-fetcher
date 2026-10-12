@@ -46,6 +46,8 @@ Results of checking the spec's *(verify)* items against the live archives. Libra
 
 **CADC: still unreachable**, also from outside Claude Code's sandbox (`ws-cadc.canfar.net` port 443 times out after 20 s). So the problem is on CADC's side or between this network and CADC, not a local restriction. **To retry on another day;** if it persists, look for CADC's current service address in their documentation.
 
+**CADC retry 2026-10-12: still unreachable.** Every NRC-hosted address times out on ports 443 and 80, both inside and outside the sandbox: `ws-cadc.canfar.net` (132.246.217.37), `ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca`, `www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca` and `cadcwww.dao.nrc.ca`. `www.canfar.net` (206.12.x) answers. `ws-uv.canfar.net` returns 503. CADC's and CANFAR's status pages (statuspage.io) both say "All Systems Operational", and no address change has been announced. That points to a routing or blocking problem between this network (ISP Fidium, AS13977) and NRC's 132.246.0.0/16 range, not a CADC outage. Next things to try: another network (phone hotspot) or a VPN, or ask support@canfar.net.
+
 ## 04 — Candidate list for ambiguous names (REQ-18) (`04_name_candidates.py`)
 
 **Works via SIMBAD TAP**, searching SIMBAD's `NAME …` identifiers with a **starts-with** match:
