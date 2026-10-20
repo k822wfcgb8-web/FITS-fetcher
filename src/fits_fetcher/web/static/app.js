@@ -434,7 +434,10 @@ function renderProduct(p, grid) {
   const box = el("input", { type: "checkbox", "data-key": p.key, checked: state.selected.has(p.key),
     onchange: (e) => { toggle(p, e.target.checked); } });
   const thumb = p.thumbnail_url
-    ? el("img", { class: "thumb", src: p.thumbnail_url, loading: "lazy", alt: `${p.filter} preview` })
+    ? el("img", { class: "thumb", src: p.thumbnail_url, loading: "lazy", alt: `${p.filter} preview`,
+        // A preview the archive couldn't make shows the placeholder instead of a broken image.
+        onerror: (e) => e.target.replaceWith(el("div", { class: "thumb", "data-thumb-key": p.key,
+          title: "No preview available; one is made after download." })) })
     : el("div", { class: "thumb", "data-thumb-key": p.key, title: "No preview yet; one is made after download." });
   const centre = p.centre_ra != null && p.centre_dec != null
     ? el("div", {}, `${p.is_mosaic ? "Mosaic" : "Image"} centre: ${fmt.position(p.centre_ra, p.centre_dec)}` +

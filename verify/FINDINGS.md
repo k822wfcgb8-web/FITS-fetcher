@@ -395,3 +395,41 @@ MegaPipe's Hα and [OIII] planes have a blank `energy_bandpassName`, so the filt
 - The timeouts are silent drops, not refusals. A Little Snitch deny fails at once. Little Snitch's log and NetBarrier's settings need administrator rights, so they weren't read; Intego's network-security switch is off.
 - **Routes differ.** Fidium → Cogent (AS174). For weather.gc.ca, Cogent hands over to **Bell Canada** (142.124.x / 64.230.x) and it works. For 132.246.x, Cogent carries the traffic to **Seattle** (`ccr21.sea02` / `ccr82.sea08`) and hands it to **38.142.50.226**, a Cogent customer interface with no name. Nothing answers after that. Over Verizon, 132.246.x is reached through Bell and works.
 - So Cogent's route to NRC's 132.246.192.0/19 goes through a Seattle handoff that drops the traffic (or the return route fails). That's for Fidium/Cogent or CADC/NRC networking to fix: report the trace to Fidium support and to support@canfar.net.
+
+## 22 — CADC reachable from Fidium; registry service lookup (2026-10-15, `curl` plus a re-run of `21_cadc.py`)
+
+Prompted by Dustin Jenkins at CADC, who replied to the report with: use the **registry** for service lookups rather than hostnames, which may move. He pointed at `https://cadc-west-01.canfar.net/reg/resource-caps` and asked which service was wanted.
+
+**The 132.246.x block has cleared.** From the home network (Fidium), `ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/argus/capabilities` answered **HTTP 200 in 0.40 s**, and `21_cadc.py` ran start to finish over Fidium, exit 0: M51 returned 39,121 image rows in 9.9 s, the `caom2.ObsCoreEnumField` collection table came back, the stacked-product queries for M51, NGC 891 and M87 matched step 21, and the 55 × 55 px MegaPipe cutout arrived (20,160 B, `NAXIS1/2 = 55`, `CRPIX1 1648.0`, `CRPIX2 -3757.0`, G.MP9401, EXPTIME 3110.756) through `raven`, redirected via `cadc-west-01.canfar.net` and then `ws-cadc.canfar.net` (132.246.217.37) — the same prefix that was dropping traffic on 2026-10-10 to 10-12. So the Seattle handoff traced in step 21 is passing today. Nothing on this Mac changed, so the route can come back; the app must treat an unreachable CADC as an archive timeout (S-32, S-33) rather than an error worth stopping for.
+
+Hosts that answered, all HTTP 200 in 0.17–0.73 s: `cadc-west-01.canfar.net` (206.12.48.216), `cadc-east-01.canfar.net` (199.241.161.228), `ws-uv.canfar.net` (206.12.48.219), `ws-sf.canfar.net` (206.12.122.235), `ws-cadc.canfar.net` (132.246.217.37), `sc2.canfar.net` (132.246.217.14), `ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca` (132.246.217.29). This closes step 21's open item about `ws-sf` and `cadc-west-01`.
+
+**What the registry gives.** `reg/resource-caps` is a 157-line `ivo://… = <capabilities URL>` list, answering in 0.4 s. The services this app needs:
+
+| Need | Registry id | Capabilities host today |
+|---|---|---|
+| ObsCore + CAOM2 queries (TAP) | `ivo://cadc.nrc.ca/argus` | `ws.cadc-ccda…` |
+| DataLink and SODA cutouts | `ivo://cadc.nrc.ca/caom2ops` | `ws.cadc-ccda…` |
+| File locator | `ivo://cadc.nrc.ca/global/raven` | `cadc-west-01.canfar.net` |
+| SIA, byte access, target resolver | `ivo://cadc.nrc.ca/sia`, `/data`, `/resolver` | `ws.cadc-ccda…` |
+
+Note what that means for the outage: the registry is **not** a way round a blocked host. Everything except `raven` is named on 132.246.217.29, so a repeat of the Fidium problem would break CADC through the registry too. Its value is that the URLs stop being hardcoded, so a service that moves is followed automatically.
+
+**For the CADC module when it is built:** resolve the service URLs from `reg/resource-caps` at start-up (one request, cached for the session) instead of the `TAP = "https://ws.cadc-ccda…/argus"` constant in `21_cadc.py`, and fall back to the last known URL with a message in the log when the registry itself can't be read.
+
+## 23 — Building the CADC module (REQ-95 to REQ-99), 2026-10-20, over Fidium (`23_cadc_module.py` plus a live run of the module)
+
+The follow-up to CADC (which services the app needs) was answered only by a copy of the earlier reply, so no further advice came; the module follows that reply and resolves its services from the registry (REQ-99).
+
+**Reachability.** Fidium still reaches every CADC host, registry included (`argus` 1.1 s, `reg/resource-caps` 0.4 s). Downloads are passed between `ws-cadc`, `ws-uv` and `ws-sf` from one request to the next, and all three answered.
+
+**Search.** The CAOM2 query (Plane × Observation × Artifact, level 3 science files, three collections) took **2–5 s**: M51 3 images after repeats, NGC 891 17, M87 43, M42 7. Colour sets: NGC 891 MegaCam g r z and Suprime-Cam g V r i; M87 MegaCam u g [OIII] r Hα i z and Suprime-Cam B g V Rc i Ic; M42 MegaCam u r i. Details that shaped the module:
+- **The artifact URI names the file's archive, not the collection**: WIRWOLF and MegaPipe files are both `cadc:CFHTSG/…`. Building the address from the collection (`cadc:CFHTWIRWOLF/…`) gets "permission denied".
+- MegaPipe Hα planes have a blank filter name and passband bounds of −0.0, not blanks; the filter and passband come from the product ID (`.HA.MP9603`).
+- The 2020 MegaPipe tiles have no exposure time in CAOM2 (the file header has `EXPTIME`), so rows show "?".
+- `MegaPipe.NNN.MMM` tiles and NGVS tiles (`NGVS+0+0.G`) also appear in CFHTMEGAPIPE; the NGVS collection itself holds the same stacks in several background-subtraction versions, so it isn't searched.
+- CAOM2 pixel sizes are written to 12 digits (0.185766207876″); rounded to 4 for the page.
+
+**Shared grids** (headers by one 28,800-byte range request each): every filter of one tile has the same NAXIS, CRVAL, CRPIX and CD: MegaPipe `MegaPipe.053.265` g r z; MegaPipe 2012–15 `G011.035.638+42.345` g r; Suprime-Cam `SCLA_035.556+42.350` V g; WIRWOLF `GW001.035.637+42.346` J Ks. Suprime-Cam's `SCLA.053.265` uses MegaPipe's tile numbers, but its CRVAL1 is written as 35.9431 against MegaPipe's 35.94305518 (0.6 px at that declination), so the two collections aren't treated as one grid.
+
+**Cutouts.** `…/raven/files/<uri>?CIRCLE=ra dec r` is redirected (301, 303) to a storage site's `minoc`, which returns the square of side 2r on the file's own grid: 0.01° gave 389 × 389 px (613 KB, 7–10 s), CRPIX moved by whole pixels. Through the module, M51's MegaPipe g and r boxes (1.5′) both came back 486 × 486 px with the same CRPIX (1864, −3542), so they stack without registration. Thinned cutouts work: `SUB=[0][x0:x1:15,y0:y1:15]` gave 201 × 201 px, 170 KB, about 7 s; M51's whole 13.6′ box as a 155 × 200 thumbnail took 7.1 s (clipped at the tile's top edge) and looks right.

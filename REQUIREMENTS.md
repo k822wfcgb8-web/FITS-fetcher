@@ -1,8 +1,8 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.21 (approved)
-**Date:** 2026-10-12
-**Status:** All open questions resolved. Remaining *(verify)* items must be checked against archive documentation during implementation.
+**Version:** 1.22 (CADC choices awaiting review)
+**Date:** 2026-10-20
+**Status:** All open questions resolved; Q-89–Q-93 (CADC module) were decided while building it and await your review. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
 > **How to read this draft**
 > - **REQ-xx** is a requirement taken from your request (or a direct consequence of it).
@@ -144,7 +144,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 | MAST | `astroquery.mast` (Observations API) | HST, JWST, Pan-STARRS, GALEX, others. Pan-STARRS images may be served through a separate cutout service. |
 | ESO | ObsCore TAP via `pyvo` (`archive.eso.org/tap_obs`); SODA cutouts | Phase 3 reduced products. **Anonymous download of public data confirmed** (verification step 20). See REQ-90–REQ-93. |
 | IRSA | `astroquery.ipac.irsa` / IVOA SIA via `pyvo` | Spitzer, WISE, 2MASS, Herschel, Euclid, ZTF. |
-| CADC | `astroquery.cadc` or `pyvo` TAP queries | **Non-mirrored collections only** (REQ-21): CFHT (incl. MegaPipe), Gemini, others to be confirmed. HST and JWST collections excluded. |
+| CADC | CAOM2 tables on CADC's TAP service via `pyvo`; cutouts from its file service | **Non-mirrored stacks only** (REQ-21): MegaPipe, WIRWOLF and Suprime-Cam stacks (REQ-95). Anonymous download of public data confirmed (verification steps 21, 23). Service addresses from CADC's registry (REQ-99). |
 
 - **S-20** ✅ Each archive is a separate, pluggable module behind a common interface, so archives can be added, removed, or fixed independently when an archive changes its API.
 
@@ -165,7 +165,12 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 - **REQ-93:** *(Resolved Q-84)* ESO's own previews are PDFs only, so thumbnails come from **CDS hips2fits, drawn from the survey's own sky map** where one exists (VHS, VIKING, VVV in Z/Y/J, UltraVISTA, KiDS colour maps). Otherwise the row shows the placeholder, and a thumbnail is made from the image once it's downloaded (REQ-27).
 - **REQ-89:** *(Resolved Q-81)* Spitzer IRAC **'short frames' mosaics** (from the short exposures of high-dynamic-range observations; e.g. 3.9 s against 104 s) are **listed under their filter** with the full-depth mosaics (REQ-53), with a **'short frames' chip** explaining that they're shallower but unsaturated. They share the full-depth mosaics' pixel grid, so they get the same Grid letter (REQ-60).
 - **REQ-94:** *(Resolved Q-88, after the live IRSA search listed four Spitzer files per band)* Spitzer **median-combined mosaics** (`median_mosaic`, the same exposures combined by median instead of the standard outlier-rejected mean) are **not offered**. Each IRAC band shows the standard mosaic and, where there is one, the short-frames mosaic (REQ-89).
-- **REQ-35:** The CADC module keeps an explicit **exclusion list** of mirrored collections (initially HST and JWST). The list lives in configuration, not code, so it can be updated if CADC adds new mirrors. During implementation, the CADC collection list must be checked against MAST, ESO and IRSA holdings to finalise it *(verify)*.
+- **REQ-35:** The CADC module keeps an explicit **exclusion list** of mirrored collections. The list lives in configuration, not code, so it can be updated if CADC adds new mirrors. *(Checked in verification step 21)*: **HST, HSTHLA, JWST and TESS** (MAST) and **IRIS, EUCLID.Q1 and EUCLID.DR1** (IRSA). Excluded collections are never queried, even if a telescope's list names them.
+- **REQ-95:** *(Decided at build, Q-89, Q-90; awaiting review)* CADC is searched through its **CAOM2 tables** (ObsCore lacks filters, exposure and pixel size) for **public calibration-level-3 images** whose footprint contains the object's centre, from three stacked collections: **MegaPipe** (CFHTMEGAPIPE, MegaCam u g r i z, Hα, [OIII]), **WIRWOLF** (CFHTWIRWOLF, WIRCam J H Ks) and **CADC's Suprime-Cam stacks** (SUBARUCADC level 3; level 2 is single exposures, excluded by REQ-12). CADC gets **telescope tick boxes** like the other archives, from the `cadc_telescopes` setting: **CFHT** (MegaCam and WIRCam) and **Subaru** (Suprime-Cam), each with a fact sheet (REQ-74). Rows read e.g. `CADC · CFHT · MegaCam`; the CADC collection is in the details, the header (`FFSURVEY`) and the credits (observatory statement, MegaPipe paper, CADC acknowledgement). Not searched in version 1: NGVS (its stacks are also in MegaPipe as `NGVS±…` tiles, in several background-subtraction variants), CFHTTERAPIX and LSST.DP1 (small; untested), radio and sub-mm collections and XMM's optical monitor (not pictures in the app's sense). MegaCam's wide **gri** filter is dropped: it's a luminance filter, not a colour channel. No off-centre sets, 'Also inside' list or planets (as REQ-88, REQ-90).
+- **REQ-96:** *(Decided at build, Q-91; awaiting review)* **Repeats are dropped as for ESO (REQ-91)**: per CADC collection and filter, only the deepest image of each pointing is offered (CADC's limiting magnitude, else exposure time). MegaPipe's two r filters (MP9601, MP9602) and two i filters count as one filter. Old 1.6° MegaPipe tiles and the newer 31′ tiles are listed together when their centres differ by more than a tenth of the field.
+- **REQ-97:** *(Decided at build, Q-92; awaiting review)* CADC images are delivered as a **box centred on the object, 1.5× its size** (REQ-68, REQ-85, REQ-92), cut by **CADC's file service (`CIRCLE`) on the file's own pixel grid with no resampling** (CRPIX moves by whole pixels; verification step 23). All filters of one tile (MegaPipe, WIRWOLF, Suprime-Cam stack, NGVS-in-MegaPipe) share one pixel grid, so they get the **same box and a Grid letter** (REQ-60). A box past the image edge is clipped (REQ-86).
+- **REQ-98:** *(Decided at build, Q-93; awaiting review)* CADC's previews show a whole tile and CDS has sky maps for only 0.4% of its sky, so the app **makes its own thumbnail** of the box (REQ-27): the file's header, then every n-th pixel of the box from CADC's file service (about 200 × 200 px, 170 KB, 5–7 s), drawn by the local server when the row scrolls into view and kept for the session. If that fails the placeholder is shown.
+- **REQ-99:** *(From CADC, verification step 22)* CADC's service addresses come from its **registry** (`reg/resource-caps`), read once per session, so a service that moves is followed; if the registry can't be read, the last known addresses are used and the log says so. An unreachable CADC is an archive timeout or failure like any other (S-32, S-33).
 
 ### 7.3 Result metadata to display (suggested)
 - **S-21** ✏️ For each result, the **main row** shows: filter, central wavelength, broadband/narrowband flag, archive + instrument, exposure time, pixel scale, estimated download size. A **click-to-expand details view** shows: telescope, bandwidth, observation date, image dimensions, sky coverage of the object, data product level. *(modified at review)*
@@ -364,6 +369,11 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | ~~Q-86~~ | Repeat epochs (M8: 80 VVV Ks tiles): **resolved → not wanted (no photometry); deepest image per pointing and collection (REQ-91)** | — |
 | ~~Q-87~~ | ESO in off-centre sets and 'Also inside': **resolved → neither (REQ-90)** | — |
 | ~~Q-88~~ | Spitzer median-combined mosaics: **resolved → not offered (REQ-94)** | — |
+| Q-89 | CADC collections: **decided at build → MegaPipe, WIRWOLF, Suprime-Cam level-3 stacks; not NGVS, TERAPIX, LSST.DP1, radio, XMM-OM (REQ-95)** | awaiting review |
+| Q-90 | CADC telescopes: **decided at build → tick boxes for CFHT and Subaru, with fact sheets (REQ-95)** | awaiting review |
+| Q-91 | CADC repeats (MegaPipe's two tile generations and filter versions): **decided at build → deepest per pointing, the ESO rule (REQ-96)** | awaiting review |
+| Q-92 | CADC delivery: **decided at build → box 1.5× the object from CADC's cutout, on the file's grid (REQ-97)** | awaiting review |
+| Q-93 | CADC thumbnails: **decided at build → made by the app from a thinned cutout (REQ-98)** | awaiting review |
 
 ---
 
@@ -404,3 +414,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.20 | 2026-10-12 | Added and resolved Q-82–Q-87 for the ESO module: pawprints stay excluded (REQ-12 note), combined products with telescope tick boxes, fact sheets and DOI credits, no off-centre or 'Also inside' lists (REQ-90), repeat epochs dropped (REQ-91), box around the object from ESO's cutout service (REQ-92), survey sky-map thumbnails (REQ-93). ESO row in 7.1 updated: anonymous download confirmed. |
 | 1.20a | 2026-10-12 | OmegaCAM's NB_659 filter labelled Hα (was [NII], the line nearest its centre), so the Hα line filter (REQ-19) finds it. |
 | 1.21 | 2026-10-12 | Added and resolved Q-88 after the live IRSA search: Spitzer median-combined mosaics not offered (REQ-94). |
+| 1.22 | 2026-10-20 | CADC module built. Exclusion list finalised (REQ-35). Added REQ-95–REQ-98 (decided while building, Q-89–Q-93, awaiting review) and REQ-99 (registry lookup, from CADC's advice). CADC row in 7.1 updated. |

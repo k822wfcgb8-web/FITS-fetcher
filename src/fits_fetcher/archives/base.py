@@ -70,9 +70,9 @@ class Product:
     grid_regions: list[str] = field(default_factory=list)
     visit: str = ""                     # planets and moons (REQ-80): only images of one visit form a set
     module_gap: bool = False            # REQ-84: NIRCam's two modules with the gap between them not covered
-    boxed: bool = False                 # REQ-85: the archive module delivers a box around the object (IRSA, ESO)
+    boxed: bool = False                 # REQ-85: the archive module delivers a box around the object (IRSA, ESO, CADC)
     chip: str = ""                      # a short label on the row, e.g. "short frames" (REQ-89)
-    survey: str = ""                    # ESO: the data collection within the telescope, e.g. "VHS" (REQ-90)
+    survey: str = ""                    # ESO, CADC: the data collection within the telescope, e.g. "VHS" (REQ-90)
 
     @property
     def key(self) -> str:
@@ -162,6 +162,11 @@ class Archive(ABC):
     def inside(self, target: Target, min_filters: int) -> list[InsideGroup]:
         """REQ-70: colour sets of other targets inside `target` (images that overlap it but miss its centre)."""
         return []
+
+    def preview(self, product: Product, ra: float, dec: float, side_arcmin: float):
+        """REQ-98: a small image (2-D array) of the box around (ra, dec), for archives that make their own
+        thumbnails on request."""
+        raise ArchiveError(f"{self.name} has no preview service.")
 
     def fetch(self, product: Product, target: Target, transfer: Transfer, box_arcmin: float,
               progress: Progress) -> Fetched:

@@ -24,6 +24,11 @@ class FakeResponse:
                 raise requests.ConnectionError("simulated drop")
             yield self.body[i:i + size]
 
+    def raise_for_status(self):
+        import requests
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code} error")
+
     def close(self):
         pass
 

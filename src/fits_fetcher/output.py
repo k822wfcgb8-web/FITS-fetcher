@@ -82,6 +82,27 @@ for _coll, _doi in ESO_DOI.items():
     CREDITS[_coll] = (f"ESO {_coll}", _ESO + f" Based on data obtained from the ESO Science Archive Facility with "
                                              f"DOI: https://doi.org/10.18727/archive/{_doi}.")
 
+# CADC (REQ-95): CADC's own acknowledgement (cadc-ccda.hia-iha.nrc-cnrc.gc.ca/en/about.html), after the observatory's
+# standard one for each instrument, plus the paper describing the stacking pipeline. Keyed by the CADC collection
+# (FFSURVEY).
+_CADC = ("This research used the facilities of the Canadian Astronomy Data Centre operated by the National Research "
+         "Council of Canada with the support of the Canadian Space Agency.")
+_CFHT = ("at the Canada-France-Hawaii Telescope (CFHT) which is operated by the National Research Council (NRC) of "
+         "Canada, the Institut National des Sciences de l'Univers of the Centre National de la Recherche Scientifique "
+         "(CNRS) of France, and the University of Hawaii.")
+CREDITS.update({
+    "CFHTMEGAPIPE": ("CFHT MegaCam (MegaPipe stacks, CADC)",
+                     "Based on observations obtained with MegaPrime/MegaCam, a joint project of CFHT and CEA/DAPNIA, "
+                     + _CFHT + " Stacks made by MegaPipe (Gwyn 2008, PASP 120, 212). " + _CADC),
+    "CFHTWIRWOLF": ("CFHT WIRCam (WIRWOLF stacks, CADC)",
+                    "Based on observations obtained with WIRCam, a joint project of CFHT, Taiwan, Korea, Canada and "
+                    "France, " + _CFHT + " " + _CADC),
+    "SUBARUCADC": ("Subaru Suprime-Cam (CADC stacks)",
+                   "Based on data collected at Subaru Telescope, which is operated by the National Astronomical "
+                   "Observatory of Japan, and obtained from the SMOKA archive and the Canadian Astronomy Data Centre. "
+                   + _CADC),
+})
+
 
 def safe(name: str) -> str:
     """A file or folder name that works on macOS, Linux and Windows."""
@@ -163,6 +184,12 @@ def thumbnail_png(path: Path, size: int = 128) -> bytes:
         data = h[0].data
         step = max(1, -(-max(data.shape) // size))
         img = np.array(data[::step, ::step], dtype=np.float64)
+    return preview_png(img)
+
+
+def preview_png(img: np.ndarray) -> bytes:
+    """A display-only PNG of a small image: asinh stretch, north up as stored (REQ-27, REQ-98)."""
+    img = np.asarray(img, dtype=np.float64)
     finite = img[np.isfinite(img) & (img != 0)]
     if finite.size:
         lo, hi = np.percentile(finite, [1, 99.7])

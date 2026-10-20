@@ -223,6 +223,50 @@ TELESCOPES: dict[str, dict] = {
         "link": "https://www.eso.org/sci/facilities/lasilla/instruments/sofi.html",
         "link_label": "Instrument page at ESO",
     },
+    # CADC (REQ-95). Keys are the `cadc_telescopes` setting's names; each holds one or more CADC collections.
+    "CFHT": {
+        "name": "CFHT",
+        "full_name": "Canada-France-Hawaii Telescope",
+        "facts": [
+            ("Mirror", "3.6 m"),
+            ("Where", "Maunakea, Hawaiʻi (ground-based)"),
+            ("Active", "Since 1979; MegaCam since 2003, WIRCam since 2005"),
+            ("Cameras used", "MegaCam: 40 CCDs covering 1° × 1°, as CADC's MegaPipe stacks, 0.186″ pixels. "
+                             "WIRCam: four near-infrared detectors, 20′ field, as CADC's WIRWOLF stacks, 0.3″ pixels."),
+            ("Wavelengths", "MegaCam u, g, r, i, z (0.33–1.0 µm) plus Hα and [OIII] narrowband; WIRCam J, H, Ks "
+                            "(1.2–2.3 µm)"),
+            ("Surveys", "CFHT Legacy Survey, Next Generation Virgo Survey (NGVS), and many single programmes"),
+        ],
+        "artifacts": [
+            "Faint, large halos and reflections around bright stars, and ghost images of the telescope pupil.",
+            "Narrow strips of lower depth along the gaps between MegaCam's CCDs, where fewer exposures overlap.",
+            "The sky is subtracted on scales of several arcminutes, so the outer light of large galaxies and "
+            "nebulae can be dimmed.",
+            "Two generations of MegaPipe tiles: older ones about 1.6° across, newer ones 31′; both may be listed.",
+            "Pixel values are scaled so that the header's PHOTZP (30) gives AB magnitudes.",
+        ],
+        "link": "https://www.cfht.hawaii.edu/",
+        "link_label": "Telescope page at CFHT",
+    },
+    "SUBARU": {
+        "name": "Subaru",
+        "full_name": "Subaru Telescope (National Astronomical Observatory of Japan), with Suprime-Cam",
+        "facts": [
+            ("Mirror", "8.2 m"),
+            ("Where", "Maunakea, Hawaiʻi (ground-based)"),
+            ("Active", "Since 1999; Suprime-Cam 1999–2017"),
+            ("Camera used", "Suprime-Cam: 10 CCDs covering 34′ × 27′, 0.2″ pixels, as stacks made by CADC"),
+            ("Wavelengths", "B, V, Rc, Ic and g, r, i, z (0.38–1.0 µm), plus narrowband filters"),
+        ],
+        "artifacts": [
+            "Long bleed trails and halos from bright stars, which saturate quickly on an 8 m telescope.",
+            "Strips of lower depth along the CCD gaps, and uneven edges where the exposures don't overlap.",
+            "Depth varies widely between filters: some stacks are a single short exposure, others many hours.",
+            "No magnitude zero point in the header.",
+        ],
+        "link": "https://www.subarutelescope.org/",
+        "link_label": "Telescope page at Subaru",
+    },
 }
 
 

@@ -41,7 +41,10 @@ class Settings:
     mast_collections: list[str] = field(default_factory=lambda: ["HST", "JWST", "PS1"])
     irsa_collections: list[str] = field(default_factory=lambda: ["spitzer_seip", "wise_allwise", "twomass_allsky"])
     eso_telescopes: list[str] = field(default_factory=lambda: ["VISTA", "VST", "HAWKI", "SOFI"])  # REQ-90
-    cadc_excluded_collections: list[str] = field(default_factory=lambda: ["HST", "HSTHLA", "JWST"])
+    cadc_telescopes: list[str] = field(default_factory=lambda: ["CFHT", "SUBARU"])  # REQ-95
+    # REQ-35: CADC collections that mirror MAST (HST, JWST, TESS) or IRSA (Euclid, IRIS); verification step 21.
+    cadc_excluded_collections: list[str] = field(
+        default_factory=lambda: ["HST", "HSTHLA", "JWST", "TESS", "IRIS", "EUCLID.Q1", "EUCLID.DR1"])
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:

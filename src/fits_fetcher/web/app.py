@@ -30,7 +30,7 @@ from fits_fetcher.downloads import DownloadManager, Item, open_folder
 from fits_fetcher.folders import NoFolderDialog, choose_folder
 from fits_fetcher.grouping import build_sets, passes
 from fits_fetcher.inside import identify
-from fits_fetcher.output import thumbnail_png
+from fits_fetcher.output import preview_png, thumbnail_png
 from fits_fetcher.processing import Options
 from fits_fetcher.resolve import ResolveError, resolve
 
@@ -44,8 +44,10 @@ QUERY_RADIUS_DEG = 0.02
 
 PROGRESS_INTERVAL_S = 0.3
 
-# Archives whose telescopes get tick boxes (REQ-72, REQ-87, REQ-90), and the setting listing each one's collections.
-TELESCOPE_SETTINGS = {"MAST": "mast_collections", "ESO": "eso_telescopes", "IRSA": "irsa_collections"}
+# Archives whose telescopes get tick boxes (REQ-72, REQ-87, REQ-90, REQ-95), and the setting listing each one's collections.
+TELESCOPE_SETTINGS = {"MAST": "mast_collections", "ESO": "eso_telescopes", "IRSA": "irsa_collections",
+                      "CADC": "cadc_telescopes"}
+PREVIEW_CACHE = 500  # REQ-98: previews kept in memory, newest last
 
 
 def _sse(event: str, data: dict) -> str:
@@ -83,6 +85,7 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
             response.headers["Cache-Control"] = "no-cache"
         return response
     known: dict[str, Product] = {}  # every product a search has returned, by key
+    previews: dict[tuple, bytes] = {}
     manager = DownloadManager(settings, ARCHIVES)
 
     @app.get("/")
@@ -286,6 +289,25 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
         except (OSError, ValueError) as e:
             raise HTTPException(500, f"Couldn't make a thumbnail: {e}") from e
         return Response(png, media_type="image/png")
+
+    @app.get("/api/preview")
+    def preview(key: str, ra: float = Query(ge=0, le=360), dec: float = Query(ge=-90, le=90),
+                side: float = Query(gt=0, le=600)):
+        """REQ-98: a thumbnail the archive makes on request, for a product a search returned (never a URL the page
+        sends)."""
+        p = known.get(key)
+        if p is None or p.archive not in ARCHIVES:
+            raise HTTPException(404, "Unknown image. Search again.")
+        cache_key = (key, round(ra, 6), round(dec, 6), round(side, 4))
+        if cache_key not in previews:
+            try:
+                previews[cache_key] = preview_png(ARCHIVES[p.archive](settings).preview(p, ra, dec, side))
+            except ArchiveError as e:
+                log.info("Preview failed: %s", e)
+                raise HTTPException(404, str(e)) from e
+            while len(previews) > PREVIEW_CACHE:
+                previews.pop(next(iter(previews)))
+        return Response(previews[cache_key], media_type="image/png", headers={"Cache-Control": "max-age=86400"})
 
     @app.get("/api/settings")
     def get_settings():

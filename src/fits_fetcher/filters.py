@@ -64,9 +64,10 @@ def parse(filter_name: str, instrument: str = "") -> tuple[float | None, str]:
 
 
 # Filters whose passband holds several lines, named for the one they're built for. OmegaCAM's NB_659 (653-665 nm)
-# holds Hα and [NII] 658.4 nm; its centre is nearer [NII], but it's the Hα filter (verification step 20). Matching
+# holds Hα and [NII] 658.4 nm; its centre is nearer [NII], but it's the Hα filter (verification step 20). So is
+# MegaCam's Ha.MP9603 (654-664 nm). Matching
 # by passband instead would turn HST's [NII] filter F658N, whose band also reaches Hα, into Hα.
-LINE_FILTERS = {"NB659": "Hα"}
+LINE_FILTERS = {"NB659": "Hα", "Ha": "Hα"}
 
 
 def line_for(wavelength_um: float | None, tolerance_um: float = 0.004, filter_name: str = "") -> str | None:

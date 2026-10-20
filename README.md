@@ -11,10 +11,14 @@ archives are in [verify/FINDINGS.md](verify/FINDINGS.md).
 | Part | State |
 |---|---|
 | Object lookup (names, designations, RA/Dec, choosing between matches) | Working |
-| MAST search: HST, JWST, Pan-STARRS | Working |
-| Colour sets, filters, previews, selection | Working |
-| ESO, IRSA, CADC | Not built yet (access verified for ESO and IRSA) |
-| Download and science-image extraction, star-core repair, cut-outs, reprojection | Not built yet |
+| Planets, Pluto and major moons, by visit, in Hubble and JWST | Working |
+| MAST search: Hubble, JWST, Pan-STARRS1 | Working |
+| ESO search: VISTA, VST, HAWK-I, SOFI | Working |
+| IRSA search: Spitzer, WISE, 2MASS | Working |
+| Colour sets, filters, pixel-grid groups, coverage, previews, selection | Working |
+| Download, science-image extraction, linearisation, star-core repair, cut-outs, blank-border trim | Working |
+| CADC search: CFHT MegaCam and WIRCam stacks, Subaru Suprime-Cam stacks | Working (choices awaiting review: spec Q-89–Q-93) |
+| Reprojection onto a common pixel grid | Not built yet |
 
 ## Install
 

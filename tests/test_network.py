@@ -2,6 +2,7 @@
 import pytest
 import requests
 
+from fits_fetcher.archives.cadc import CadcArchive
 from fits_fetcher.archives.eso import EsoArchive
 from fits_fetcher.archives.mast import MastArchive
 from fits_fetcher.config import Settings
@@ -50,3 +51,22 @@ def test_m83_eso_sets_and_a_cutout(tmp_path):
     p = next(p for p in EsoArchive(Settings()).search(small, 0.02) if p.survey == "VHS")
     f = EsoArchive(Settings()).fetch(p, small, Transfer(tmp_path), 2.0, lambda d, n: None)
     assert abs(f.header["NAXIS1"] - p.width) <= 2 and not f.box_clipped
+
+
+def test_m87_cadc_sets_a_cutout_and_a_preview(tmp_path):
+    """REQ-95 to REQ-98: M87 has a MegaCam set with Hα and [OIII] and a Suprime-Cam set; two filters of one MegaPipe
+    tile come back as the same box; a preview is about 200 px."""
+    from fits_fetcher.archives.base import Target
+    from fits_fetcher.transfer import Transfer
+
+    (t,) = resolve("M87")
+    products = CadcArchive(Settings()).search(t, 0.02)
+    sets = {s.instruments[0]: {r.filter for r in s.rows} for s in build_sets(products, min_filters=3)}
+    assert {"u", "g", "r", "i", "z", "Ha", "OIII"} <= sets["MegaCam"] and {"B", "V", "Rc", "Ic"} <= sets["Suprime-Cam"]
+    small = Target(query="M87", matched_id="M 87", ra=t.ra, dec=t.dec, size_arcmin=0.5)
+    pair = [p for p in CadcArchive(Settings()).search(small, 0.02)
+            if p.obs_id.startswith("MegaPipe.367.205.") and p.filter in ("g", "Ha")]
+    heads = [CadcArchive(Settings()).fetch(p, small, Transfer(tmp_path), 2.0, lambda d, n: None).header for p in pair]
+    assert len(heads) == 2 and abs(heads[0]["NAXIS1"] - pair[0].width) <= 2
+    assert all(heads[0][k] == heads[1][k] for k in ("NAXIS1", "NAXIS2", "CRPIX1", "CRPIX2"))
+    assert max(CadcArchive(Settings()).preview(pair[0], t.ra, t.dec, 9.4).shape) <= 200
