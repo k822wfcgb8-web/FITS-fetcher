@@ -6,6 +6,8 @@
   sets is processed once and copied into each set folder (S-29).
 - Cache files are deleted once the output is saved; if processing fails they are kept and the error logged (REQ-23).
 - Cancel stops downloads between chunks; partial files stay in the cache so a later download resumes (S-07, S-27).
+- With 'Save a data mask' on, each image gets `<name>_mask.fits` beside it, and images on one grid a combined
+  `Grid_<grid>_mask.fits` in each set folder (REQ-101–REQ-103).
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from astropy.io import fits
 
 from fits_fetcher.archives.base import Archive, ArchiveError, Product, Target
 from fits_fetcher.config import Settings
+from fits_fetcher.masks import combine_grid, mask_path, write_mask
 from fits_fetcher.output import object_folder, output_paths, write_credits
 from fits_fetcher.processing import Options, ProcessingError, existing_matches, grid_id, process, save
 from fits_fetcher.transfer import Cancelled, Transfer, TransferError
@@ -64,6 +67,7 @@ class DownloadJob:
         self._lock = threading.Lock()
         self._processing = threading.Semaphore(1)
         self._grid_boxes: dict[str, str] = {}  # REQ-75: grid ID → trim box (FFTRIMBX) its first image used
+        self._grid_names = {grid_id(it.product): it.product.grid for it in items if it.product.grid}  # REQ-103
         self._pools: list[ThreadPoolExecutor] = []
         for it in items:
             it.total = it.product.size_bytes or 0
@@ -130,8 +134,9 @@ class DownloadJob:
         if existing:
             for x in paths:
                 if x != existing and not (x.exists() and existing_matches(x, options)):
-                    x.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(existing, x)
+                    self._copy(existing, x, options)
+            if options.data_mask:
+                self._grid_masks(paths, existing)
             self._update(item, state="skipped", done=item.total, paths=[str(x) for x in paths],
                          message="Already downloaded with these settings.")
             return
@@ -151,13 +156,41 @@ class DownloadJob:
             if "FFTRIMBX" in result.header:
                 self._grid_boxes.setdefault(result.header["FFGRID"], result.header["FFTRIMBX"])
             notes = " ".join(result.warnings)
+            if result.mask is not None:
+                gaps = write_mask(mask_path(paths[0]), result.mask, result.header, paths[0].name, [])
+                if gaps:
+                    notes = (notes + f" The data mask marks {gaps:,} pixels of gaps inside the field.").strip()
             del result
-        for x in paths[1:]:
-            x.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(paths[0], x)
+            for x in paths[1:]:
+                self._copy(paths[0], x, options)
+            if options.data_mask:
+                self._grid_masks(paths, paths[0])
         for f in fetched.files:  # REQ-23: originals go once the output is safely saved
             f.unlink(missing_ok=True)
         self._update(item, state="saved", done=item.total, paths=[str(x) for x in paths], message=notes)
+
+    @staticmethod
+    def _copy(src: Path, dst: Path, options: Options) -> None:
+        """S-29: a product in several sets is copied into each set folder, with its data mask (REQ-101)."""
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        if options.data_mask and mask_path(src).exists():
+            shutil.copy2(mask_path(src), mask_path(dst))
+
+    def _grid_masks(self, paths: list[Path], saved: Path) -> None:
+        """REQ-103: refresh the combined mask of the saved image's grid in each of its set folders."""
+        try:
+            h = fits.getheader(mask_path(saved))
+        except (OSError, ValueError):
+            return
+        grid, name = h.get("FFGRID"), self._grid_names.get(h.get("FFGRID", ""))
+        if not grid or not name:
+            return
+        for x in paths:
+            try:
+                combine_grid(x.parent, grid, name)
+            except (OSError, ValueError) as e:
+                log.warning("Could not write the grid mask in %s: %s", x.parent, e)
 
     def _grid_box(self, p: Product) -> str | None:
         """REQ-75: the trim box of an image on `p`'s grid saved earlier, in this download or in the object's folder."""

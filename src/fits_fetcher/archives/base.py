@@ -70,6 +70,7 @@ class Product:
     grid_regions: list[str] = field(default_factory=list)
     visit: str = ""                     # planets and moons (REQ-80): only images of one visit form a set
     module_gap: bool = False            # REQ-84: NIRCam's two modules with the gap between them not covered
+    chip_gap: bool = False              # REQ-104: a gap between two CCDs, never filled, crosses the object
     boxed: bool = False                 # REQ-85: the archive module delivers a box around the object (IRSA, ESO, CADC)
     chip: str = ""                      # a short label on the row, e.g. "short frames" (REQ-89)
     survey: str = ""                    # ESO, CADC: the data collection within the telescope, e.g. "VHS" (REQ-90)

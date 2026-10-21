@@ -203,3 +203,31 @@ def test_query_failure_becomes_archive_error(monkeypatch):
     monkeypatch.setattr(mast.Observations, "query_criteria", boom)
     with pytest.raises(mast.ArchiveError, match="MAST search failed"):
         mast.MastArchive(Settings()).search(M51, 0.02)
+
+
+# ---------- chip gaps (REQ-104) ----------
+NGC976 = Target(query="NGC 976", matched_id="NGC 976", ra=38.5001586, dec=20.97674767, size_arcmin=1.585)
+NGC976_F555W = ("POLYGON 38.4983648 20.9515459 38.4768026 20.9623096 38.5021000 21.0008428 38.5236779 20.9904756 "
+                "POLYGON 38.5018976 21.0010205 38.4766002 20.9625649 38.4551539 20.9731261 38.4806379 21.0113296")
+
+
+def test_chip_gap_needs_two_close_pieces_over_the_object():
+    assert mast.chip_gap("WFC3/UVIS", NGC976_F555W, NGC976)
+    assert not mast.chip_gap("WFC3/IR", NGC976_F555W, NGC976)           # one detector, no chip gap
+    far = "POLYGON 38.49 20.96 38.51 20.96 38.51 20.99 38.49 20.99 POLYGON 38.60 20.96 38.62 20.96 38.62 20.99 38.60 20.99"
+    assert not mast.chip_gap("WFC3/UVIS", far, NGC976)                  # separate pointings, far apart
+    one = "POLYGON 38.49 20.96 38.51 20.96 38.51 20.99 38.49 20.99"
+    assert not mast.chip_gap("ACS/WFC", one, NGC976)
+
+
+def test_chip_gap_shared_by_grid_partners(fake_mast):
+    """NGC 976's F350LP mosaic footprint is one polygon over a thin bridge; its grid partners show the gap."""
+    one = "POLYGON 38.4551539 20.9731261 38.4983648 20.9515459 38.5236779 20.9904756 38.4806379 21.0113296"
+    fake_mast([{"obs_id": "hst_skycell-p1773x11y07_wfc3_uvis_f555w_all", "s_region": NGC976_F555W, "filters": "F555W",
+                "instrument_name": "WFC3/UVIS"},
+               {"obs_id": "hst_skycell-p1773x11y07_wfc3_uvis_f350lp_all", "s_region": one, "filters": "F350LP",
+                "instrument_name": "WFC3/UVIS"},
+               {"obs_id": "hst_skycell-p1773x11y07_wfc3_ir_f160w_all", "s_region": one, "filters": "F160W",
+                "instrument_name": "WFC3/IR"}])
+    found = mast.MastArchive(Settings(hst_show_mosaics=True)).search(NGC976, 0.02)
+    assert {p.filter: p.chip_gap for p in found} == {"F555W": True, "F350LP": True, "F160W": False}  # IR: one detector

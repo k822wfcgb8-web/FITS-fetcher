@@ -1,7 +1,7 @@
 """Processing chain for one downloaded science image (Section 8).
 
 Order (REQ-41): read → linearise (REQ-36) → star-core repair (REQ-37–43) → cutout (REQ-25, REQ-58)
-→ trim the blank border (REQ-75, REQ-76) → NaN to 0 (REQ-22) → header (S-22, REQ-23, REQ-42, REQ-54) → compatibility check (REQ-49) → save.
+→ trim the blank border (REQ-75, REQ-76) → note the data mask (REQ-101) → NaN to 0 (REQ-22) → header (S-22, REQ-23, REQ-42, REQ-54) → compatibility check (REQ-49) → save.
 Reprojection (REQ-24) comes in a later build; `Options.reproject` is recorded as off.
 """
 from __future__ import annotations
@@ -23,6 +23,7 @@ from scipy import ndimage
 
 from fits_fetcher import __version__, footprint
 from fits_fetcher.archives.base import Fetched, Product, Target
+from fits_fetcher.masks import mask_path
 
 # Header keywords carried over from the archive file when present (S-22): instrument set-up, exposure,
 # dates, units, target and programme, and the photometric calibration that makes the values meaningful.
@@ -60,6 +61,7 @@ class Options:
     box_arcmin: float = 10.0
     reproject: bool = False  # REQ-24: not built yet
     trim: bool = True        # REQ-75: always on; recorded so files made before trimming are processed again
+    data_mask: bool = False  # REQ-101: save a DATA + GAPS mask next to the image
 
     def for_product(self, product: Product) -> Options:
         if product.parts:  # a Pan-STARRS box (REQ-68) is built to its size and its footprint is one skycell's
@@ -75,12 +77,17 @@ class Options:
                 ("FFCUTOUT", self.cutout, "cut around the object"),
                 ("FFCUTSZ", round(self.box_arcmin, 3) if self.cutout else 0.0, "[arcmin] cutout box size"),
                 ("FFREPROJ", self.reproject, "reprojected onto a common grid"),
-                ("FFTRIM", self.trim, "blank border trimmed")]
+                ("FFTRIM", self.trim, "blank border trimmed"),
+                ("FFDMASK", self.data_mask, "data mask saved alongside (REQ-101)")]
 
     def matches(self, header: fits.Header) -> bool:
         """Was an existing output made with these settings? (REQ-54)"""
         for key, value, _ in self.cards():
             if key in ("FFREPMAX", "FFREPMXB") and not self.star_repair:
+                continue
+            if key == "FFDMASK":  # REQ-102: a mask only forces a new download when one is wanted and missing
+                if value and not header.get(key, False):
+                    return False
                 continue
             have = header.get(key)
             if have is None:
@@ -98,6 +105,7 @@ class Result:
     data: np.ndarray
     header: fits.Header
     warnings: list[str]
+    mask: np.ndarray | None = None  # REQ-101: True where the image has real data, before NaN became 0
 
 
 # ---------- steps ----------
@@ -324,6 +332,7 @@ def process(f: Fetched, product: Product, target: Target, options: Options, grid
             notes.append(msg)
             history.append(msg)
 
+    mask = np.isfinite(data) & (data != 0) if options.data_mask else None
     zeros = nan_to_zero(data)
     if zeros:
         history.append(f"{zeros} blank (NaN) pixels set to 0.")
@@ -334,7 +343,7 @@ def process(f: Fetched, product: Product, target: Target, options: Options, grid
     if recorded:
         header["FFGRID"] = (grid_id(product), "FITS-fetcher pixel-grid ID")
         header["FFTRIMBX"] = (recorded, "[px] trim box x0 x1 y0 y1 from reference pixel")
-    return Result(data, header, notes)
+    return Result(data, header, notes, mask)
 
 
 def grid_id(product: Product) -> str:
@@ -486,7 +495,10 @@ def save(result: Result, path: Path) -> None:
 
 
 def existing_matches(path: Path, options: Options) -> bool:
-    """REQ-54: skip a product only if its output exists and was made with the same settings."""
+    """REQ-54: skip a product only if its output exists and was made with the same settings, and its data mask
+    exists when one is wanted (REQ-102)."""
+    if options.data_mask and not mask_path(path).exists():
+        return False
     try:
         return options.matches(fits.getheader(path))
     except (OSError, ValueError):

@@ -40,6 +40,7 @@ from dataclasses import replace
 from urllib.parse import urlencode
 
 import astropy.units as u
+import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from astropy.io import fits
@@ -125,12 +126,40 @@ def grid_key(collection: str, filt: str, obs_id: str) -> str:
     return f"HST visit {parts[1]}_{parts[2]} {'/'.join(rest).upper()}"
 
 
+# REQ-104: cameras whose two CCDs leave a blank strip a few arcsec wide (WFC3/UVIS 1.2-1.6″, verification 24).
+TWO_CCD_INSTRUMENTS = ("ACS/WFC", "WFC3/UVIS")
+CHIP_GAP_MAX_ARCSEC = 5.0
+
+
+def chip_gap(instrument: str, s_region: str, target: Target) -> bool:
+    """REQ-104: the footprint is separate pieces no more than CHIP_GAP_MAX_ARCSEC apart, two or more of them over
+    the object (its disc, or its centre's neighbourhood when the size is unknown). Pieces farther apart are
+    separate pointings, not a chip gap."""
+    if instrument.upper() not in TWO_CCD_INSTRUMENTS or target.body:
+        return False
+    polys = footprint.polygons_arcsec(s_region, target.ra, target.dec)
+    if len(polys) < 2:
+        return False
+    radius = (target.size_arcmin or 1.0) * 30  # arcsec
+    origin = np.zeros((1, 2))
+    over = [p for p in polys if footprint.inside_mask([p], [0.0], [0.0])[0] or _gap_arcsec(origin, p) <= radius]
+    return any(min(_gap_arcsec(a, b), _gap_arcsec(b, a)) <= CHIP_GAP_MAX_ARCSEC
+               for i, a in enumerate(over) for b in over[i + 1:])
+
+
+def _gap_arcsec(points, poly) -> float:
+    """Shortest distance from any of `points` to the edges of polygon `poly` (both (n, 2) arrays in arcsec)."""
+    p0, p1 = poly, np.roll(poly, -1, axis=0)
+    d = p1 - p0
+    t = np.clip(((points[:, None, :] - p0[None]) * d[None]).sum(-1) / np.maximum((d * d).sum(-1), 1e-12)[None], 0, 1)
+    nearest = p0[None] + t[..., None] * d[None]
+    return float(np.sqrt(((points[:, None, :] - nearest) ** 2).sum(-1)).min())
+
+
 def mosaic_extents(rows, ra0: float, dec0: float) -> dict[str, tuple[float, float, float, float]]:
     """Per skycell, the box (x0, x1, y0, y1 in arcsec around ra0/dec0, x east, y north) around every mosaic
     footprint MAST returned on it. A mosaic file spans that box (verification 24: NGC 976, NGC 3675, M1, M51,
     NGC 4565 within 6%), not the whole skycell, so it sizes the download estimate (S-26)."""
-    import numpy as np
-
     pts = defaultdict(list)
     for r in rows:
         obs_id = _text(r["obs_id"]).lower()
@@ -143,6 +172,15 @@ def mosaic_extents(rows, ra0: float, dec0: float) -> dict[str, tuple[float, floa
             xy = np.vstack(polys)
             out[cell] = (float(xy[:, 0].min()), float(xy[:, 0].max()), float(xy[:, 1].min()), float(xy[:, 1].max()))
     return out
+
+
+def _share_chip_gaps(products: list[Product]) -> list[Product]:
+    """REQ-104: every two-CCD image on a grid shares its gap, though MAST sometimes draws one footprint over a thin
+    bridge (NGC 976's F350LP mosaic: one polygon, while its F555W and F814W partners are two). A WFC3/IR mosaic on
+    the same skycell grid has no chip gap."""
+    grids = {p.grid for p in products if p.chip_gap and p.grid}
+    return [replace(p, chip_gap=True) if p.grid in grids and not p.chip_gap
+            and p.instrument.upper() in TWO_CCD_INSTRUMENTS else p for p in products]
 
 
 def visit_key(collection: str, obs_id: str) -> str:
@@ -252,7 +290,7 @@ class MastArchive(Archive):
             extents = mosaic_extents(rows, target.ra, target.dec)
             products = [self._product(r, target, extents=extents) for r in rows
                         if self._selected(r, pointed) and footprint.contains(_text(r["s_region"]), target.ra, target.dec)]
-            return products + (ps1.result() if ps1 else [])
+            return _share_chip_gaps(products) + (ps1.result() if ps1 else [])
 
     # ---------- Pan-STARRS boxes (REQ-68) ----------
     def _ps1_box_arcmin(self, target: Target) -> float:
@@ -327,7 +365,7 @@ class MastArchive(Archive):
                 p = self._product(r, target, coverage=False, extents=extents)
                 if p.grid and p.region:  # only images known to share a pixel grid can form a set (REQ-60)
                     out.append(p)
-        return out
+        return _share_chip_gaps(out)
 
     def inside(self, target: Target, min_filters: int) -> list[InsideGroup]:
         pointed = [c for c in self._collections() if c != "PS1"]
@@ -519,4 +557,5 @@ class MastArchive(Archive):
                       if coverage and not moving else None),
             region=_text(o["s_region"]), visit=visit_key(coll, obs_id) if moving else "",
             module_gap=module_gap(inst, _text(o["s_region"])),
+            chip_gap=chip_gap(inst, _text(o["s_region"]), target) if not moving else False,
         )

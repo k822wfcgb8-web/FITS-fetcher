@@ -64,6 +64,7 @@ class DownloadRequest(BaseModel):
     items: list[DownloadItem]
     star_repair: bool
     cutout: bool
+    data_mask: bool = False  # REQ-101
 
 
 class FolderRequest(BaseModel):
@@ -229,7 +230,7 @@ def create_app(settings: Settings | None = None, on_quit=None, settings_path: Pa
             raise HTTPException(400, "Some selected images are no longer known to the server. Search again.")
         options = Options(star_repair=req.star_repair, repair_max_area=settings.star_repair_max_area,
                           repair_max_area_bright=settings.star_repair_max_area_bright,
-                          cutout=req.cutout,
+                          cutout=req.cutout, data_mask=req.data_mask,
                           box_arcmin=footprint.box_arcmin(target.size_arcmin, settings.cutout_default_arcmin))
         job = manager.start(target, [Item(_with_grid(known[i.key]), i.sets) for i in req.items], options)
         return job.snapshot()

@@ -146,3 +146,40 @@ def test_grid_box_found_in_files_saved_earlier(tmp_path, product):
     job._grid_boxes.clear()
     assert DownloadJob(target, [], Options(), settings, {})._grid_box(p) == "-10 10 -5 5"
     assert DownloadJob(target, [], Options(), settings, {})._grid_box(product("F450W", grid="visit 2")) is None
+
+
+def test_data_mask_saved_and_copied_with_each_image(setup):
+    c, sets, Fake, obj, _ = setup
+    k = keys(sets)[0]
+    _, end = download(c, [(k, ["SetA", "SetB"])], data_mask=True)
+    assert end["items"][0]["state"] == "saved"
+    for s in ("SetA", "SetB"):
+        image = next(x for x in (obj / s).glob("*.fits") if not x.name.endswith("_mask.fits"))
+        mask = image.with_name(image.stem + "_mask.fits")
+        assert mask.exists() and fits.getheader(image)["FFDMASK"] is True
+        with fits.open(mask) as hdul:
+            assert [x.name for x in hdul] == ["DATA", "GAPS"] and (hdul[0].data == 255).all()
+    _, end = download(c, [(k, ["SetA"])], data_mask=True)
+    assert end["items"][0]["state"] == "skipped"
+    next((obj / "SetA").glob("*_mask.fits")).unlink()
+    _, end = download(c, [(k, ["SetA"])], data_mask=True)  # the mask went missing: download again
+    assert end["items"][0]["state"] == "saved" and Fake.fetches == 2
+
+
+def test_grid_mask_written_for_images_on_one_grid(setup, monkeypatch, product):
+    from fits_fetcher.downloads import DownloadJob, Item
+    from fits_fetcher.masks import grid_mask_path
+    from fits_fetcher.processing import grid_id
+
+    c, sets, Fake, obj, _ = setup
+    a, b = product("F555W", grid="visit 1"), product("F814W", grid="visit 1")
+    job = DownloadJob(Target(**TARGET), [Item(a, ["S"]), Item(b, ["S"])], Options(data_mask=True),
+                      Settings(output_dir=str(obj.parent)), {})
+    folder = obj / "S"
+    folder.mkdir(parents=True)
+    from fits_fetcher.masks import write_mask
+    h = fits.Header(wcs_header(30, 30)); h["FFGRID"] = grid_id(a)
+    for name in ("F555W.fits", "F814W.fits"):
+        write_mask(folder / name.replace(".fits", "_mask.fits"), np.ones((30, 30), bool), h, name, [])
+    job._grid_masks([folder / "F814W.fits"], folder / "F814W.fits")
+    assert grid_mask_path(folder, "visit 1").exists()

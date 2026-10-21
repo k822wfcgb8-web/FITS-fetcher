@@ -36,6 +36,7 @@ class Settings:
     reproject: bool = False                  # REQ-24
     cutout: bool = False                     # REQ-25
     cutout_default_arcmin: float = 10.0      # REQ-25/REQ-58 box when the object's size is unknown
+    data_mask: bool = False                  # REQ-101: save a DATA + GAPS mask next to each image
     hst_show_mosaics: bool = False           # REQ-58
     # Collection allow-lists live in configuration, not code (REQ-35, REQ-55, REQ-56).
     mast_collections: list[str] = field(default_factory=lambda: ["HST", "JWST", "PS1"])
@@ -77,7 +78,7 @@ NUMBERS: dict[str, tuple[type, float, float, str]] = {
     "star_repair_max_area_bright": (int, 1, 10_000_000, "pixels"),
     "cutout_default_arcmin": (float, 0.1, 600, "arcmin"),
 }
-SWITCHES = ("mix_instruments", "hst_show_mosaics", "star_repair", "cutout")
+SWITCHES = ("mix_instruments", "hst_show_mosaics", "star_repair", "cutout", "data_mask")
 EDITABLE = FOLDERS + tuple(NUMBERS) + SWITCHES
 
 

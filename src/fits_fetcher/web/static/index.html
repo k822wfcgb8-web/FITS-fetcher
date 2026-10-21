@@ -102,6 +102,7 @@
         <div class="row wrap">
           <label class="check"><input id="opt-repair" type="checkbox"> Repair star cores</label>
           <label class="check"><input id="opt-cutout" type="checkbox"> <span id="opt-cutout-label">Cut around the object</span></label>
+          <label class="check" title="Saves <name>_mask.fits beside each image: a DATA layer (white where the image has real data) and a GAPS layer (white on blank strips inside the field, such as chip gaps). Images on one grid also get a combined Grid mask."><input id="opt-mask" type="checkbox"> Save a data mask</label>
           <label class="check unavailable"><input type="checkbox" disabled> Reproject onto a common grid (not built yet)</label>
           <span class="grow"></span>
           <button id="download" disabled>Download selected</button>

@@ -64,6 +64,7 @@ async function init() {
   $("hst-mosaics").checked = info.settings.hst_show_mosaics;
   $("opt-repair").checked = info.settings.star_repair;   // REQ-61: pre-set from the saved settings
   $("opt-cutout").checked = info.settings.cutout;
+  $("opt-mask").checked = info.settings.data_mask;
   buildSettingsForm();
   for (const name of [...info.archives, ...info.planned]) {
     const available = info.archives.includes(name);
@@ -323,8 +324,15 @@ const GAP_TITLE = "NIRCam has two camera modules side by side. This observation 
   "so the image is two separate squares with a blank band between.";
 const gapChip = () => el("span", { class: "chip warn", title: GAP_TITLE }, "2 modules, gap not covered");
 
+// REQ-104: a gap between two CCDs crosses the object and no exposure filled it.
+const CHIP_GAP_TITLE = "The camera's two CCDs leave a blank strip 1–3″ wide, and no exposure in this image filled it " +
+  "where it crosses the object. Tick 'Save a data mask' to get the gap as a mask (GAPS layer), e.g. to fill it from " +
+  "another survey in PixInsight.";
+const chipGapChip = () => el("span", { class: "chip warn", title: CHIP_GAP_TITLE }, "chip gap");
+
 function setGap(set) {
-  return set.rows.some((row) => row.products.some((p) => p.module_gap)) ? gapChip() : null;
+  const has = (key) => set.rows.some((row) => row.products.some((p) => p[key]));
+  return [has("module_gap") ? gapChip() : null, has("chip_gap") ? chipGapChip() : null];
 }
 
 function setPosition(set) {
@@ -413,7 +421,7 @@ function renderSet(set) {
     // An off-centre set's folder name ends in its position, a planet set's in its visit; their chips show those.
     el("summary", {}, el("span", { class: "set-name" }, ...heading, " · ",
       (set.position || set.visit ? set.name.split("_").slice(0, -1).join("_") : set.name).replaceAll("_", " · ")),
-      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), setGap(set), allTick, allBtn,
+      el("span", { class: "muted" }, set.readiness), setPosition(set), setVisit(set), setCoverage(set), ...setGap(set), allTick, allBtn,
       colourHint(set)),
     ...set.warnings.map((w) => el("p", { class: "warning" }, `⚠ ${w}`)),
     legend,
@@ -455,7 +463,7 @@ function renderProduct(p, grid) {
         `Grid ${grid.label}`)) : null),
     el("td", {}, ...source(p.archive, p.collection), ` · ${p.instrument}`, p.is_mosaic ? el("div", {}, el("span", { class: "chip" }, "mosaic")) : null,
       p.chip ? el("div", {}, el("span", { class: "chip", title: chipTitle(p.chip) }, p.chip)) : null,
-      p.module_gap ? el("div", {}, gapChip()) : null),
+      p.module_gap ? el("div", {}, gapChip()) : null, p.chip_gap ? el("div", {}, chipGapChip()) : null),
     el("td", {}, fmt.exp(p.exptime_s)),
     el("td", { title: coverageTitle() }, fmt.cover(p.coverage)),
     el("td", {}, p.pixel_scale_arcsec ? `${p.pixel_scale_arcsec}″` : "?"),
@@ -545,6 +553,7 @@ $("download").addEventListener("click", async () => {
 
   const body = {
     target: state.target, star_repair: $("opt-repair").checked, cutout: $("opt-cutout").checked,
+    data_mask: $("opt-mask").checked,
     items: items.map((p) => ({ key: p.key, sets: setsContaining(p.key) })),
   };
   $("download").disabled = true;
@@ -651,6 +660,7 @@ const SETTINGS_FIELDS = [
       hint: "Larger holes are filled only when their edge is bright starlight, e.g. Pan-STARRS masks around bright stars." },
     { key: "cutout", label: "Cut around the object", type: "check" },
     { key: "cutout_default_arcmin", label: "Cutout box when the object's size is unknown", unit: "′", step: "any" },
+    { key: "data_mask", label: "Save a data mask with each image", type: "check" },
   ]],
 ];
 const settingsState = { defaults: null };
@@ -751,6 +761,7 @@ function applySavedSettings(old, now) {
   if (changed("hst_show_mosaics")) $("hst-mosaics").checked = now.hst_show_mosaics;
   if (changed("star_repair")) $("opt-repair").checked = now.star_repair;
   if (changed("cutout")) $("opt-cutout").checked = now.cutout;
+  if (changed("data_mask")) $("opt-mask").checked = now.data_mask;
   if (state.target) cutoutLabel(state.target);
   updateSelection();
 }
