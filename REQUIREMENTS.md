@@ -1,7 +1,7 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.22 (CADC choices awaiting review)
-**Date:** 2026-10-20
+**Version:** 1.22a (CADC choices awaiting review)
+**Date:** 2026-10-21
 **Status:** All open questions resolved; Q-89–Q-93 (CADC module) were decided while building it and await your review. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
 > **How to read this draft**
@@ -185,6 +185,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
   - Example, M35: 6 sets, e.g. ACS/WFC F502N, F555W, F606W, F658N 4.3′ NW (2.9 arcmin², from a mosaic) and WFC3/UVIS F555W, F606W, F814W 5.9′ SW (7.4 arcmin², one visit).
 - **REQ-59:** *(Resolved Q-39)* The details view also shows the **image centre** as the archive reports it, in decimal degrees and sexagesimal (e.g. `RA 202.46741° (13h 29m 52.18s), Dec +47.19999° (+47° 12′ 00.0″)`), and **how far the object lies from that centre** (″ under 1′, otherwise ′). For an HST mosaic it is labelled *mosaic centre*, because the delivered file is cut around the object.
 - **REQ-60:** *(Resolved Q-40)* Within a colour set, images in **two or more filters that share one pixel grid** are marked as a matched group, so the user can see without opening the details which images stack pixel-for-pixel with no registration (PixInsight, Siril). Each group gets a letter and colour (*Grid A*, *Grid B* …): a coloured bar on the row's left edge, a chip under the filter name, and a legend line under the set name listing its filters, with a **Select** button that ticks the whole group. Only grids confirmed in verification step 12 are marked: HST single-visit images from the same visit and detector, HST mosaics from the same skycell, and Pan-STARRS stacks from the same skycell. JWST and different-visit images are not marked, since they need registration.
+- **REQ-100:** *(Requested 2026-10-21, after the NGC 976 search)* A **Deselect all** button beside the selection summary unticks every image in every colour set, off-centre set and list at once. It's greyed out when nothing is selected.
 
 ---
 
@@ -415,3 +416,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.20a | 2026-10-12 | OmegaCAM's NB_659 filter labelled Hα (was [NII], the line nearest its centre), so the Hα line filter (REQ-19) finds it. |
 | 1.21 | 2026-10-12 | Added and resolved Q-88 after the live IRSA search: Spitzer median-combined mosaics not offered (REQ-94). |
 | 1.22 | 2026-10-20 | CADC module built. Exclusion list finalised (REQ-35). Added REQ-95–REQ-98 (decided while building, Q-89–Q-93, awaiting review) and REQ-99 (registry lookup, from CADC's advice). CADC row in 7.1 updated. |
+| 1.22a | 2026-10-21 | Added REQ-100: a Deselect all button. |

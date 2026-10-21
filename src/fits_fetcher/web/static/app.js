@@ -479,11 +479,20 @@ function selectGrid(set, grid) {
   for (const row of set.rows) for (const p of row.products) if (keys.has(p.key)) toggle(p, true);
 }
 
+// REQ-100: untick every image in every set and list.
+function deselectAll() {
+  state.selected.clear();
+  for (const b of document.querySelectorAll("input[data-key]")) b.checked = false;
+  updateSelection();
+}
+$("deselect-all").addEventListener("click", deselectAll);
+
 function updateSelection() {
   const items = [...state.selected.values()];
   const total = items.reduce((s, p) => s + (p.size_bytes || 0), 0);
   const limit = (state.info?.settings.size_warning_gb || 5) * 1e9;
   $("download").disabled = !items.length || downloading();
+  $("deselect-all").disabled = !items.length;
   for (const box of document.querySelectorAll("input.set-all")) {
     const ticked = box.products.filter((p) => state.selected.has(p.key)).length;
     box.checked = ticked > 0 && ticked === box.products.length;
