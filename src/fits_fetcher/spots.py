@@ -32,6 +32,7 @@ MIN_AREA_ARCMIN2 = 0.25      # about 30" x 30"
 SAME_AREA = 0.8              # share of a set's area another set must cover to replace it
 MOSAIC_MARGIN_PX = 64        # extra rows fetched above and below a mosaic box (archives/mast.py)
 HULL_POINTS = 64             # the shared area's outline is kept to at most this many points
+GAP_MAX_ARCSEC = 5.0         # pieces this close are one area split by a chip gap (CHIP_GAP_MAX_ARCSEC, archives/mast.py)
 
 
 @dataclass
@@ -75,6 +76,15 @@ def _hull(points: np.ndarray) -> np.ndarray:
     return np.asarray(half(pts) + half(reversed(pts)))
 
 
+def _join_across_gaps(shared: np.ndarray, step: float) -> np.ndarray:
+    """Labels of `shared` with pieces no more than GAP_MAX_ARCSEC apart joined (MAST draws a chip gap as a split
+    footprint, REQ-104). Every piece of `shared` lies inside one label."""
+    r = math.ceil(GAP_MAX_ARCSEC / step / 2)
+    disc = np.add.outer(np.arange(-r, r + 1) ** 2, np.arange(-r, r + 1) ** 2) <= r * r
+    closed = ndimage.binary_closing(np.pad(shared, r + 1), structure=disc)[r + 1:-r - 1, r + 1:-r - 1]
+    return ndimage.label(closed | shared)[0]
+
+
 def _spots_on_grid(products: list[Product], target: Target, min_filters: int) -> list[Spot]:
     ra0 = float(np.mean([p.centre_ra for p in products]))
     dec0 = float(np.mean([p.centre_dec for p in products]))
@@ -116,12 +126,20 @@ def _spots_on_grid(products: list[Product], target: Target, min_filters: int) ->
         chosen = [f for i, f in enumerate(names) if c >> i & 1]
         shared = np.logical_and.reduce([masks[f] for f in chosen])
         labels, n = ndimage.label(shared)
+        joined = _join_across_gaps(shared, step)
+        delivered = set()
         for k in range(1, n + 1):
-            area = labels == k
-            if area.sum() * cell < MIN_AREA_ARCMIN2 or not (area & in_disc).any():
+            piece = labels == k
+            if piece.sum() * cell < MIN_AREA_ARCMIN2 or not (piece & in_disc).any():
                 continue
-            if 0 <= centre[0] < area.shape[0] and 0 <= centre[1] < area.shape[1] and area[centre]:
+            if 0 <= centre[0] < piece.shape[0] and 0 <= centre[1] < piece.shape[1] and piece[centre]:
                 continue  # contains the object's centre: a normal result (REQ-14)
+            # The area delivered takes in every piece across a chip gap, so both CCDs are kept (gap left blank).
+            j = int(joined[piece][0])
+            if j in delivered:
+                continue
+            delivered.add(j)
+            area = shared & (joined == j)
             ax, ay = gx[area], gy[area]
             # Outline from the sample cells' corners, so the box covers the cells at the area's edge.
             h = step / 2

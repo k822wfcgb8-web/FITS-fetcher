@@ -25,7 +25,7 @@ def image(filt, region, grid="HST visit 1_01 WFC3/UVIS", instrument="WFC3/UVIS",
 
 
 def _centre(region):
-    nums = [float(n) for n in region.split()[1:]]
+    nums = [float(n) for n in region.split() if n != "POLYGON"]
     return float(np.mean(nums[0::2])), float(np.mean(nums[1::2]))
 
 
@@ -109,6 +109,27 @@ def test_two_separate_areas_on_one_grid_are_two_sets():
     sets = spots.build(imgs, CLUSTER)
     assert sorted(s.position["direction"] for s in sets) == ["E", "N"]
     assert all(len(r.products) == 1 for s in sets for r in s.rows)
+
+
+def rect(x0, x1, y0, y1, around: Target = CLUSTER) -> str:
+    """A rectangle footprint, edges in arcmin east and north of the cluster's centre."""
+    pts = footprint._offsets(around.ra, around.dec, [(x / 60, y / 60) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))])
+    return "POLYGON " + " ".join(f"{ra} {dec}" for ra, dec in pts)
+
+
+@pytest.mark.parametrize("gap_arcsec, both_chips", [(1.5, True), (10, False)])
+def test_a_set_split_by_a_chip_gap_keeps_both_chips(gap_arcsec, both_chips):
+    # NGC 976's skycell: MAST draws each filter as two CCDs with a 1.2-1.6" gap; the lower one holds the centre.
+    # The set is still offered for the upper chip, but its box takes in both (REQ-104); a wider gap doesn't.
+    g = gap_arcsec / 60
+    chips = rect(-1, 1, -0.5, 1) + " " + rect(-1, 1, 1 + g, 2.5)
+    [cs] = spots.build([image(f, chips) for f in ("F555W", "F606W", "F814W")], CLUSTER, min_filters=3)
+    decs = [dec for _, dec in cs.rows[0].products[0].cut]
+    reaches = (min(decs) - CLUSTER.dec) * 60
+    if both_chips:
+        assert reaches == pytest.approx(-0.5, abs=0.05) and cs.position["area_arcmin2"] == pytest.approx(6, rel=0.05)
+    else:
+        assert reaches == pytest.approx(1 + g, abs=0.05) and cs.position["area_arcmin2"] == pytest.approx(2 * (1.5 - g), rel=0.05)
 
 
 # ---------- MAST: candidates and download ----------
