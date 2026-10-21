@@ -1,3 +1,5 @@
+import math
+
 import pytest
 from astropy.table import Table
 
@@ -118,8 +120,38 @@ def test_mosaic_box_estimate_uses_object_size(fake_mast):
     fake_mast([{"obs_id": "hst_skycell-p1_acs_wfc_f814w_all"}])
     small = Target(query="x", matched_id="x", ra=M51.ra, dec=M51.dec, size_arcmin=2.0)
     p = mast.MastArchive(Settings(hst_show_mosaics=True)).search(small, 0.02)[0]
-    rows = int(2 * 2.0 * 60 / 0.04)  # 2x size, in 0.04" pixels
-    assert p.size_bytes == rows * mast.SKYCELL_WIDTH_PX * 4
+    rows = 2 * 2.0 * 60 / 0.04 + 2 * mast.MOSAIC_MARGIN_PX  # 2x size in 0.04" pixels, plus the fetched margin
+    width = 0.2 * 3600 * math.cos(math.radians(47.2)) / 0.04  # COVERS is 0.2 deg of RA wide
+    assert p.size_bytes == pytest.approx(rows * width * 4, rel=0.01)
+    assert p.width == pytest.approx(width, rel=0.01)
+
+
+def test_mosaic_estimate_spans_every_mosaic_on_the_skycell(fake_mast):
+    """Verification 24: NGC 976's UVIS mosaics are 6,100 x 5,401 px, the box around every mosaic on the skycell,
+    including the WFC3/IR one that reaches further east (footprints from MAST, 2026-10-21)."""
+    uvis = ("POLYGON 38.4983648 20.9515459 38.4768026 20.9623096 38.5021000 21.0008428 38.5236779 20.9904756 "
+            "POLYGON 38.5018976 21.0010205 38.4766002 20.9625649 38.4551539 20.9731261 38.4806379 21.0113296")
+    ir = ("POLYGON 38.5065729 20.9514937 38.4752634 20.9690954 38.4959830 21.0016622 38.5277015 20.9845896")
+    fake_mast([{"obs_id": "hst_skycell-p1773x11y07_wfc3_uvis_f555w_all", "s_region": uvis, "filters": "F555W"},
+               {"obs_id": "hst_skycell-p1773x11y07_wfc3_ir_f160w_all", "s_region": ir, "filters": "F160W",
+                "instrument_name": "WFC3/IR"},
+               {"obs_id": "hst_skycell-p1773x11y08_wfc3_uvis_f814w_all", "filters": "F814W",  # another skycell
+                "s_region": "POLYGON 38.40 20.90 38.60 20.90 38.60 21.10 38.40 21.10"}])
+    ngc976 = Target(query="NGC 976", matched_id="NGC 976", ra=38.5001586, dec=20.97674767, size_arcmin=1.585)
+    found = mast.MastArchive(Settings(hst_show_mosaics=True)).search(ngc976, 0.02)
+    p = next(p for p in found if p.filter == "F555W")
+    assert p.width == pytest.approx(6100, rel=0.01)
+    # the nucleus is on row 2286 of 5401: the 3.17' box (4,755 rows) plus margin runs off the bottom edge, so
+    # fetch() reads rows 0-4728
+    assert p.size_bytes == pytest.approx(4729 * 6100 * 4, rel=0.01)
+
+
+def test_mosaic_estimate_without_a_footprint_assumes_a_whole_skycell(fake_mast):
+    fake_mast([{"obs_id": "hst_skycell-p1_acs_wfc_f814w_all", "s_region": "CIRCLE 202.47 47.2 0.1"}])
+    small = Target(query="x", matched_id="x", ra=M51.ra, dec=M51.dec, size_arcmin=2.0)
+    p = mast.MastArchive(Settings(hst_show_mosaics=True)).search(small, 0.02)[0]
+    assert p.width == mast.SKYCELL_WIDTH_PX
+    assert p.size_bytes == (2 * 2.0 * 60 / 0.04 + 2 * mast.MOSAIC_MARGIN_PX) * mast.SKYCELL_WIDTH_PX * 4
 
 
 # ---------- planets and moons (REQ-79, REQ-80) ----------

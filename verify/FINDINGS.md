@@ -433,3 +433,24 @@ The follow-up to CADC (which services the app needs) was answered only by a copy
 **Shared grids** (headers by one 28,800-byte range request each): every filter of one tile has the same NAXIS, CRVAL, CRPIX and CD: MegaPipe `MegaPipe.053.265` g r z; MegaPipe 2012–15 `G011.035.638+42.345` g r; Suprime-Cam `SCLA_035.556+42.350` V g; WIRWOLF `GW001.035.637+42.346` J Ks. Suprime-Cam's `SCLA.053.265` uses MegaPipe's tile numbers, but its CRVAL1 is written as 35.9431 against MegaPipe's 35.94305518 (0.6 px at that declination), so the two collections aren't treated as one grid.
 
 **Cutouts.** `…/raven/files/<uri>?CIRCLE=ra dec r` is redirected (301, 303) to a storage site's `minoc`, which returns the square of side 2r on the file's own grid: 0.01° gave 389 × 389 px (613 KB, 7–10 s), CRPIX moved by whole pixels. Through the module, M51's MegaPipe g and r boxes (1.5′) both came back 486 × 486 px with the same CRPIX (1864, −3542), so they stack without registration. Thinned cutouts work: `SUB=[0][x0:x1:15,y0:y1:15]` gave 201 × 201 px, 170 KB, about 7 s; M51's whole 13.6′ box as a 155 × 200 thumbnail took 7.1 s (clipped at the tile's top edge) and looks right.
+
+## 24 — How big an HST mosaic file is (S-26, REQ-58), 2026-10-21 (`24_mosaic_sizes.py`)
+
+NGC 976's search showed **404 MB** for each HST mosaic: 4,755 box rows × 21,258 px × 4 bytes, from the rule that a mosaic spans a whole skycell (true of M51). Its files are in fact **6,100 × 5,401 px** (263.9 MB on disk, science and weight arrays of 132 MB each), so the fetch is about 115 MB.
+
+**What sets a mosaic's size.** Science-extension headers of 27 mosaics around six objects, against the box (on the skycell's north-up 0.04″ grid) around the footprints MAST returns at the app's 0.02° radius:
+
+| Object | Mosaic files | Box around **its own** footprint | Box around **every mosaic on its skycell** |
+|---|---|---|---|
+| NGC 976 | 6,100 × 5,401 | 0.94 × 1.00 | 1.00 × 1.00 |
+| NGC 3675 (5 skycells) | 1,786–7,198 wide | 0.99–1.06 | 0.99–1.06 |
+| M1 | 13,912 × 10,967 | 0.26–0.90 | 0.90 × 1.00 |
+| M51 | 21,258 × 20,668 | 0.21–0.50 | 1.00 × 0.95 |
+| M82 (3 skycells) | 4,966–21,953 wide | 0.06–1.02 | 0.75–1.10 |
+| NGC 4565 | 19,363 × 18,071 | 0.70–1.00 | 1.00 × 1.00 |
+
+Every mosaic of one skycell (all filters, ACS/WFC, WFC3/UVIS and the fine-grid WFC3/IR) shares one array, sized to **the box around all of their footprints**: NGC 976's UVIS mosaics are 6,100 px wide only because its WFC3/IR F160W mosaic reaches further east. M82's p2551x01y10 is the exception (its IR mosaic has its own 7,297 × 15,735 array; the box is 0.75 × 0.73), and a skycell can be wider than 21,258 px (M82's p2552x16y10 is 21,953).
+
+**For the app:** size the estimate from that box (rows of the cut box inside it, plus the 64-row margin fetch() reads, times its width), falling back to a whole skycell when no footprint can be read.
+
+**Chip gap (NGC 976).** Weight maps sampled by range requests: every UVIS mosaic and single visit has a zero-weight diagonal 28–39 px (1.1–1.6″) wide, about 40″ west of the nucleus. Eleven visits at one orientation narrow it (F350LP, 31 exposures: 28–30 px) but never close it. The Pan-STARRS 2.4′ box (skycell 1773.025, g r i z y) has no blank pixel along it.

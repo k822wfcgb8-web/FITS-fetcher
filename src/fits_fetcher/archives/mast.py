@@ -70,7 +70,9 @@ PS1_CUTOUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
 PS1_STACK_BYTES = 68_000_000  # a whole compressed PS1 stack file (verification step 05)
 DRC_INSTRUMENTS = ("ACS/WFC", "WFC3/UVIS")  # CTE-corrected products; everything else is _drz
 
-# HST multi-visit mosaics: one skycell is about 21,258 px wide at 0.04"/px (verified on M51's skycell).
+# HST multi-visit mosaics: one skycell is about 21,258 px wide at 0.04"/px (verified on M51's skycell). A mosaic
+# file spans only the box around every mosaic footprint on its skycell (verification 24), so this is the
+# fallback width when no footprint can be read.
 SKYCELL_WIDTH_PX = 21258
 MOSAIC_PIXEL_SCALE = 0.04
 # Extra mosaic rows fetched above and below the box, so star cores on the box edge are still enclosed
@@ -121,6 +123,26 @@ def grid_key(collection: str, filt: str, obs_id: str) -> str:
         return ""
     rest = [t for t in parts[3:-1] if t != filt.lower()]  # instrument and detector, e.g. wfc3 uvis
     return f"HST visit {parts[1]}_{parts[2]} {'/'.join(rest).upper()}"
+
+
+def mosaic_extents(rows, ra0: float, dec0: float) -> dict[str, tuple[float, float, float, float]]:
+    """Per skycell, the box (x0, x1, y0, y1 in arcsec around ra0/dec0, x east, y north) around every mosaic
+    footprint MAST returned on it. A mosaic file spans that box (verification 24: NGC 976, NGC 3675, M1, M51,
+    NGC 4565 within 6%), not the whole skycell, so it sizes the download estimate (S-26)."""
+    import numpy as np
+
+    pts = defaultdict(list)
+    for r in rows:
+        obs_id = _text(r["obs_id"]).lower()
+        if (_text(r["obs_collection"]) == "HST" and hst_family(obs_id) == "mosaic" and "_total_" not in obs_id
+                and not obs_id.endswith("_coarse-all")):
+            pts[obs_id.split("_")[1]] += footprint.polygons_arcsec(_text(r["s_region"]), ra0, dec0)
+    out = {}
+    for cell, polys in pts.items():
+        if polys:
+            xy = np.vstack(polys)
+            out[cell] = (float(xy[:, 0].min()), float(xy[:, 0].max()), float(xy[:, 1].min()), float(xy[:, 1].max()))
+    return out
 
 
 def visit_key(collection: str, obs_id: str) -> str:
@@ -227,7 +249,8 @@ class MastArchive(Archive):
         with ThreadPoolExecutor(2) as pool:  # the two queries run side by side: MAST answers in 3-35 s
             ps1 = pool.submit(self._ps1_products, target) if "PS1" in self._collections() else None
             rows = self._query(target, radius_deg, pointed) if pointed else []
-            products = [self._product(r, target) for r in rows
+            extents = mosaic_extents(rows, target.ra, target.dec)
+            products = [self._product(r, target, extents=extents) for r in rows
                         if self._selected(r, pointed) and footprint.contains(_text(r["s_region"]), target.ra, target.dec)]
             return products + (ps1.result() if ps1 else [])
 
@@ -298,9 +321,10 @@ class MastArchive(Archive):
     def elsewhere(self, target: Target) -> list[Product]:
         pointed = [c for c in self._collections() if c != "PS1"]
         out = []
+        extents = mosaic_extents(self._around(target), target.ra, target.dec)
         for r in self._around(target):
             if self._selected(r, pointed, mosaics=True) and _float(r["s_ra"]) is not None:
-                p = self._product(r, target, coverage=False)
+                p = self._product(r, target, coverage=False, extents=extents)
                 if p.grid and p.region:  # only images known to share a pixel grid can form a set (REQ-60)
                     out.append(p)
         return out
@@ -439,7 +463,8 @@ class MastArchive(Archive):
                 "each piece linear before stitching.")
         return Fetched(fits.Header(), canvas, paths[0], files=paths, stitch=stitch, notes=[note])
 
-    def _product(self, o, target: Target, coverage: bool = True, moving: bool = False) -> Product:
+    def _product(self, o, target: Target, coverage: bool = True, moving: bool = False,
+                 extents: dict | None = None) -> Product:
         coll = _text(o["obs_collection"])
         inst = _text(o["instrument_name"])
         obs_id = _text(o["obs_id"])
@@ -460,11 +485,18 @@ class MastArchive(Archive):
                   if c_ra is not None and c_dec is not None and not moving else None)
 
         # Download estimates (S-26) for the science array only (REQ-57), as float32.
-        if mosaic:  # only the rows of the box around the object, each a full skycell row
-            box_px = int(self._mosaic_box_arcmin(target) * 60 / MOSAIC_PIXEL_SCALE)
-            size = min(box_px, SKYCELL_WIDTH_PX) * SKYCELL_WIDTH_PX * 4
+        if mosaic:  # only the rows of the box around the object (plus the margin), each a full mosaic row
+            half = self._mosaic_box_arcmin(target) * 30 + MOSAIC_MARGIN_PX * MOSAIC_PIXEL_SCALE  # arcsec
+            ext = (extents or {}).get(obs_id.lower().split("_")[1])
+            if ext:
+                x0, x1, y0, y1 = ext
+                width = max(1, round((x1 - x0) / MOSAIC_PIXEL_SCALE))
+                rows = max(0, round((min(y1, half) - max(y0, -half)) / MOSAIC_PIXEL_SCALE))
+            else:
+                width = SKYCELL_WIDTH_PX
+                rows = min(round(2 * half / MOSAIC_PIXEL_SCALE), SKYCELL_WIDTH_PX)
+            size = rows * width * 4
             level = "HST mosaic (cut around object)"
-            width = SKYCELL_WIDTH_PX
         elif coll == "PS1":
             size, level, width = PS1_STACK_BYTES, "PS1 stack", None
         else:
