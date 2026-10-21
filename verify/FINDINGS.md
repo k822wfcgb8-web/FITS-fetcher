@@ -454,3 +454,10 @@ Every mosaic of one skycell (all filters, ACS/WFC, WFC3/UVIS and the fine-grid W
 **For the app:** size the estimate from that box (rows of the cut box inside it, plus the 64-row margin fetch() reads, times its width), falling back to a whole skycell when no footprint can be read.
 
 **Chip gap (NGC 976).** Weight maps sampled by range requests: every UVIS mosaic and single visit has a zero-weight diagonal 28–39 px (1.1–1.6″) wide, about 40″ west of the nucleus. Eleven visits at one orientation narrow it (F350LP, 31 exposures: 28–30 px) but never close it. The Pan-STARRS 2.4′ box (skycell 1773.025, g r i z y) has no blank pixel along it.
+
+## 25 — CADC's answer on thinned cutouts and mirrored collections (REQ-98, REQ-35), 2026-10-21 (email, no script)
+
+Dustin Jenkins at CADC answered the two remaining questions from step 23:
+
+- **Thinned cutouts.** `SUB=[<extension>][<lower>:<upper>:<step>]` is a valid way to extract by pixel range, with the step optional (default 1). He hadn't used a step as large as 26 but said the usage is correct and fine for thumbnails. The app's thumbnail request, `SUB=[0][x0:x1:n,y0:y1:n]` with n = box width / 200 (REQ-98), is that form, so **Q-93 is confirmed by CADC**.
+- **Mirrored collections.** CADC has no published list of which of its collections mirror other archives; he will ask internally. He suggested tuning the ADQL query to the `argus` TAP service if duplicates are the concern. **No change:** the query names only the collections the app wants (`o.collection IN (…)`), so mirrors are never returned, and `cadc_excluded_collections` (step 21) stays as a safety net. Repeats within CADC's own stacks are dropped after the query (REQ-96). Check the exclusion list against CADC's list if one arrives.

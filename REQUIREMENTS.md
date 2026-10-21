@@ -1,8 +1,8 @@
 # Specification: Multi-Archive Astronomical Image Retriever for Amateur Image Processing
 
-**Version:** 1.23 (CADC choices awaiting review)
+**Version:** 1.23a (CADC choices awaiting review)
 **Date:** 2026-10-21
-**Status:** All open questions resolved; Q-89–Q-93 (CADC module) were decided while building it and await your review. Remaining *(verify)* items must be checked against archive documentation during implementation.
+**Status:** All open questions resolved; Q-89–Q-92 (CADC module) were decided while building it and await your review; Q-93 was confirmed by CADC. Remaining *(verify)* items must be checked against archive documentation during implementation.
 
 > **How to read this draft**
 > - **REQ-xx** is a requirement taken from your request (or a direct consequence of it).
@@ -169,7 +169,7 @@ A cross-platform Python application that lets an amateur astrophotographer searc
 - **REQ-95:** *(Decided at build, Q-89, Q-90; awaiting review)* CADC is searched through its **CAOM2 tables** (ObsCore lacks filters, exposure and pixel size) for **public calibration-level-3 images** whose footprint contains the object's centre, from three stacked collections: **MegaPipe** (CFHTMEGAPIPE, MegaCam u g r i z, Hα, [OIII]), **WIRWOLF** (CFHTWIRWOLF, WIRCam J H Ks) and **CADC's Suprime-Cam stacks** (SUBARUCADC level 3; level 2 is single exposures, excluded by REQ-12). CADC gets **telescope tick boxes** like the other archives, from the `cadc_telescopes` setting: **CFHT** (MegaCam and WIRCam) and **Subaru** (Suprime-Cam), each with a fact sheet (REQ-74). Rows read e.g. `CADC · CFHT · MegaCam`; the CADC collection is in the details, the header (`FFSURVEY`) and the credits (observatory statement, MegaPipe paper, CADC acknowledgement). Not searched in version 1: NGVS (its stacks are also in MegaPipe as `NGVS±…` tiles, in several background-subtraction variants), CFHTTERAPIX and LSST.DP1 (small; untested), radio and sub-mm collections and XMM's optical monitor (not pictures in the app's sense). MegaCam's wide **gri** filter is dropped: it's a luminance filter, not a colour channel. No off-centre sets, 'Also inside' list or planets (as REQ-88, REQ-90).
 - **REQ-96:** *(Decided at build, Q-91; awaiting review)* **Repeats are dropped as for ESO (REQ-91)**: per CADC collection and filter, only the deepest image of each pointing is offered (CADC's limiting magnitude, else exposure time). MegaPipe's two r filters (MP9601, MP9602) and two i filters count as one filter. Old 1.6° MegaPipe tiles and the newer 31′ tiles are listed together when their centres differ by more than a tenth of the field.
 - **REQ-97:** *(Decided at build, Q-92; awaiting review)* CADC images are delivered as a **box centred on the object, 1.5× its size** (REQ-68, REQ-85, REQ-92), cut by **CADC's file service (`CIRCLE`) on the file's own pixel grid with no resampling** (CRPIX moves by whole pixels; verification step 23). All filters of one tile (MegaPipe, WIRWOLF, Suprime-Cam stack, NGVS-in-MegaPipe) share one pixel grid, so they get the **same box and a Grid letter** (REQ-60). A box past the image edge is clipped (REQ-86).
-- **REQ-98:** *(Decided at build, Q-93; awaiting review)* CADC's previews show a whole tile and CDS has sky maps for only 0.4% of its sky, so the app **makes its own thumbnail** of the box (REQ-27): the file's header, then every n-th pixel of the box from CADC's file service (about 200 × 200 px, 170 KB, 5–7 s), drawn by the local server when the row scrolls into view and kept for the session. If that fails the placeholder is shown.
+- **REQ-98:** *(Decided at build, Q-93; confirmed by CADC 2026-10-21, verification step 25)* CADC's previews show a whole tile and CDS has sky maps for only 0.4% of its sky, so the app **makes its own thumbnail** of the box (REQ-27): the file's header, then every n-th pixel of the box from CADC's file service (about 200 × 200 px, 170 KB, 5–7 s), drawn by the local server when the row scrolls into view and kept for the session. If that fails the placeholder is shown.
 - **REQ-99:** *(From CADC, verification step 22)* CADC's service addresses come from its **registry** (`reg/resource-caps`), read once per session, so a service that moves is followed; if the registry can't be read, the last known addresses are used and the log says so. An unreachable CADC is an archive timeout or failure like any other (S-32, S-33).
 
 ### 7.3 Result metadata to display (suggested)
@@ -378,7 +378,7 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | Q-90 | CADC telescopes: **decided at build → tick boxes for CFHT and Subaru, with fact sheets (REQ-95)** | awaiting review |
 | Q-91 | CADC repeats (MegaPipe's two tile generations and filter versions): **decided at build → deepest per pointing, the ESO rule (REQ-96)** | awaiting review |
 | Q-92 | CADC delivery: **decided at build → box 1.5× the object from CADC's cutout, on the file's grid (REQ-97)** | awaiting review |
-| Q-93 | CADC thumbnails: **decided at build → made by the app from a thinned cutout (REQ-98)** | awaiting review |
+| ~~Q-93~~ | CADC thumbnails: **decided at build → made by the app from a thinned cutout (REQ-98); CADC confirmed the `SUB` step usage (verification step 25)** | — |
 | ~~Q-94~~ | Telling blank pixels and chip gaps from real zeros in PixInsight: **resolved → optional DATA + GAPS mask beside each image, a combined mask per grid, and a 'chip gap' chip (REQ-101–REQ-104)** | — |
 
 ---
@@ -424,3 +424,4 @@ Some pipelines blank the centres of saturated stars (as NaN or 0), which shows u
 | 1.22a | 2026-10-21 | Added REQ-100: a Deselect all button. |
 | 1.22b | 2026-10-21 | REQ-58: HST mosaic download estimates sized from the skycell's mosaic footprints, not a whole skycell (verification step 24). |
 | 1.23 | 2026-10-21 | Added and resolved Q-94: optional data mask with DATA and GAPS layers (REQ-101), when it forces a new download (REQ-102), a combined mask per grid (REQ-103), and a 'chip gap' chip (REQ-104). REQ-41 order updated. |
+| 1.23a | 2026-10-21 | Q-93 confirmed by CADC: the thinned-cutout `SUB` usage is correct (REQ-98, verification step 25). Mirrored collections: no CADC list yet; REQ-35 unchanged. |
